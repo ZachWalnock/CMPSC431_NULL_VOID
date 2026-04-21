@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Sidebar,
   SidebarContent,
@@ -15,6 +15,7 @@ import {
   SidebarMenuSubItem,
 } from "@/app/components/ui/sidebar";
 import Link from "next/link";
+import { apiFetch } from "@/lib/api";
 
 const categories = [
   {
@@ -43,14 +44,24 @@ const categories = [
   },
 ];
 
-const topNavItems = [
+const baseNavItems = [
   { label: "Home", href: "/" },
-  { label: "Seller Dashboard", href: "/seller_auction_page" },
   { label: "Orders", href: "/orders" },
 ];
 
 export function AppSidebar() {
   const [openCategory, setOpenCategory] = useState<string | null>(null);
+  const [isSeller, setIsSeller] = useState(false);
+
+  useEffect(() => {
+    apiFetch<{ role: string }>("/api/session")
+      .then((data) => setIsSeller(data.role === "seller"))
+      .catch(() => {});
+  }, []);
+
+  const topNavItems = isSeller
+    ? [baseNavItems[0], { label: "Seller Dashboard", href: "/seller_auction_page" }, baseNavItems[1]]
+    : baseNavItems;
 
   function toggleCategory(label: string) {
     setOpenCategory(openCategory === label ? null : label);
