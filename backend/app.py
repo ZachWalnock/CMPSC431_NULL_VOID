@@ -42,6 +42,19 @@ def hash_password(plain: str) -> str:
     """SHA-256 hash a plain-text password."""
     return hashlib.sha256(plain.encode("utf-8")).hexdigest()
 
+def get_orders_for_user(bidder_email):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+            SELECT A.Category, A.Auction_Title, A.Product_Name, A.Product_Description, A.Quantity, A.Reserve_Price, A.Max_bids, A.Status, B.Bidder_Email, B.Bid_Price
+            FROM Auction_Listings A, Bids B
+            WHERE A.Listing_ID = B.Listing_ID AND B.Bidder_Email = %s
+            """, (bidder_email,))
+            results = cur.fetchall()
+    return results
+       
+       
+
 
 
 def verify_password(plain: str, stored: str) -> bool:
@@ -535,116 +548,26 @@ def populate_from_csv():
     with get_db() as conn:
         with conn.cursor() as cur:
             data_dir = "NittanyAuctionDataset_v1"
-            load_users(cur, data_dir)
-            seed_helpdesk_team_inbox(cur)
-            load_table_from_rows(
-                cur,
-                "Address",
-                read_csv_rows(data_dir, "Address.csv"),
-                """
-                INSERT INTO Address (address_id, zipcode, street_num, street_name)
-                VALUES (%(address_id)s, %(zipcode)s, %(street_num)s, %(street_name)s)
-                ON CONFLICT (address_id) DO NOTHING
-                """,
-            )
-            load_table_from_rows(
-                cur,
-                "Zipcode_Info",
-                read_csv_rows(data_dir, "Zipcode_Info.csv"),
-                """
-                INSERT INTO Zipcode_Info (zipcode, city, state)
-                VALUES (%(zipcode)s, %(city)s, %(state)s)
-                ON CONFLICT (zipcode) DO NOTHING
-                """,
-            )
-            load_table_from_rows(
-                cur,
-                "Bidders",
-                read_csv_rows(data_dir, "Bidders.csv"),
-                """
-                INSERT INTO Bidders (
-                    email, first_name, last_name, age, home_address_id, major, phone, annual_income
-                )
-                SELECT %(email)s, %(first_name)s, %(last_name)s, %(age)s, %(home_address_id)s,
-                       %(major)s, NULL, NULL
-                WHERE EXISTS (SELECT 1 FROM Users WHERE email = %(email)s)
-                ON CONFLICT (email) DO NOTHING
-                """,
-            )
-            load_table_from_rows(
-                cur,
-                "Sellers",
-                read_csv_rows(data_dir, "Sellers.csv"),
-                """
-                INSERT INTO Sellers (
-                    email, first_name, last_name, phone, age, home_address_id, major,
-                    bank_routing_number, bank_account_number, balance
-                )
-                SELECT %(email)s, NULL, NULL, NULL, NULL, NULL, NULL,
-                       %(bank_routing_number)s, %(bank_account_number)s, %(balance)s
-                WHERE EXISTS (SELECT 1 FROM Users WHERE email = %(email)s)
-                ON CONFLICT (email) DO NOTHING
-                """,
-            )
-            load_table_from_rows(
-                cur,
-                "Helpdesk",
-                read_csv_rows(data_dir, "Helpdesk.csv"),
-                """
-                INSERT INTO Helpdesk (
-                    email, position, first_name, last_name, phone, department, staff_id
-                )
-                SELECT %(email)s, %(Position)s, NULL, NULL, NULL, NULL, NULL
-                WHERE EXISTS (SELECT 1 FROM Users WHERE email = %(email)s)
-                ON CONFLICT (email) DO NOTHING
-                """,
-            )
-            load_table_from_rows(
-                cur,
-                "Credit_Cards",
-                read_csv_rows(data_dir, "Credit_Cards.csv"),
-                """
-                INSERT INTO Credit_Cards (
-                    card_token, card_type, expire_month, expire_year, owner_email,
-                    last_four_digits, card_number_hash
-                )
-                SELECT %(card_token)s, %(card_type)s, %(expire_month)s, %(expire_year)s,
-                       %(Owner_email)s, %(last_four_digits)s, %(card_number_hash)s
-                WHERE EXISTS (SELECT 1 FROM Users WHERE email = %(Owner_email)s)
-                ON CONFLICT (card_token) DO NOTHING
-                """,
-            )
-            load_table_from_rows(
-                cur,
-                "Local_Vendors",
-                read_csv_rows(data_dir, "Local_Vendors.csv"),
-                """
-                INSERT INTO Local_Vendors (
-                    email, business_name, business_address_id, customer_service_phone_number
-                )
-                SELECT %(Email)s, %(Business_Name)s, %(Business_Address_ID)s,
-                       %(Customer_Service_Phone_Number)s
-                WHERE EXISTS (SELECT 1 FROM Users WHERE email = %(Email)s)
-                ON CONFLICT (email) DO NOTHING
-                """,
-            )
-            load_table_from_rows(
-                cur,
-                "HelpDesk_Requests",
-                read_csv_rows(data_dir, "Requests.csv"),
-                """
-                INSERT INTO HelpDesk_Requests (
-                    request_id, requester_email, request_type, subject, description, status,
-                    assigned_to, category_name
-                )
-                VALUES (
-                    %(request_id)s, %(requester_email)s, %(request_type)s, %(subject)s, %(description)s,
-                    COALESCE(%(status)s, 'unassigned'),
-                    COALESCE(%(assigned_to)s, 'helpdeskteam@lsu.edu'),
-                    %(category_name)s
-                )
-                ON CONFLICT DO NOTHING
-                """,
+
+            # User passwords must be hashed before insert
+            cur.execute("SELECT COUNT(*) AS count FROM Users")
+            if cur.fetchone()["count"] == 0:
+                users_file = os.path.join(data_dir, "Users.csv")
+                if os.path.exists(users_file):
+                    with open(users_file, newline="", encoding="utf-8-sig") as f:
+                        for row in csv.DictReader(f):
+                            cur.execute(
+                                "INSERT INTO Users (email, password) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                                (row["email"].strip(), hash_password(row["password"].strip())),
+                            )
+
+
+            _load_csv(cur, data_dir, "Zipcode_Info.csv", "Zipcode_Info")
+            _load_csv(cur, data_dir, "Address.csv", "Address")
+            # helpdeskteam@lsu.edu is a pseudo staff in Helpdesk.csv but absent from Users.csv
+            cur.execute(
+                "INSERT INTO Users (email, password) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                ("helpdeskteam@lsu.edu", hash_password("helpdeskteam")),
             )
 
         conn.commit()
@@ -1332,51 +1255,15 @@ def api_helpdesk_tickets(request: Request):
     return {"unassigned": unassigned, "assigned": assigned, "completed": completed}
 
 
-@app.post("/api/helpdesk/tickets/{request_id}/claim")
-def api_claim_ticket(request_id: int, request: Request):
-    email, role = get_authenticated_user(request)
-    if role != "helpdesk":
-        return JSONResponse({"error": "HelpDesk access required."}, status_code=403)
-    with get_db() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                UPDATE HelpDesk_Requests
-                SET assigned_to = %s, status = 'open'
-                WHERE request_id = %s AND assigned_to = 'helpdeskteam@lsu.edu'
-                RETURNING *
-                """,
-                (email, request_id),
-            )
-            row = cur.fetchone()
-        conn.commit()
-    if not row:
-        return JSONResponse({"error": "Ticket could not be claimed."}, status_code=409)
-    return {"success": True, "ticket": serialize_request_row(row)}
+    return RedirectResponse(url="http://localhost:3000/orders")
 
-
-@app.post("/api/helpdesk/tickets/{request_id}/resolve")
-def api_resolve_ticket(request_id: int, request: Request):
-    email, role = get_authenticated_user(request)
-    if role != "helpdesk":
-        return JSONResponse({"error": "HelpDesk access required."}, status_code=403)
-    with get_db() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                UPDATE HelpDesk_Requests
-                SET status = 'completed', completed_at = CURRENT_TIMESTAMP
-                WHERE request_id = %s AND assigned_to = %s
-                RETURNING *
-                """,
-                (request_id, email),
-            )
-            row = cur.fetchone()
-        conn.commit()
-    if not row:
-        return JSONResponse({"error": "Ticket could not be resolved."}, status_code=409)
-    return {"success": True, "ticket": serialize_request_row(row)}
-
+@app.get("/get_user_orders")
+async def get_user_orders(request: Request):
+    bidder_email = request.query_params.get("bidder_email")
+    print(bidder_email)
+    results = get_orders_for_user(bidder_email)
+    print(results)
+    return None
 
 @app.get("/logout")
 async def logout(request: Request):

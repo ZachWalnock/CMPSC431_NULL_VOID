@@ -38,7 +38,7 @@ const auction_listings = [
   }
 ];
 
-import AuctionListingCard from "../components/auctionListingCard";
+import AuctionListingCard from "../../components/auctionListingCard";
 export default function AuctionPage() {
     return (
         <div style={{ background: "#fff", height: "100vh", fontWeight: 1000 }}>
