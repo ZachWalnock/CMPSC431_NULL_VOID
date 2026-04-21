@@ -42,38 +42,156 @@ def init_db():
         with conn.cursor() as cur:
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS Users (
-                    email       TEXT PRIMARY KEY,
-                    password    TEXT NOT NULL
+                    email TEXT PRIMARY KEY,
+                    password TEXT NOT NULL
                 );
             """)
 
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS Helpdesk (
-                    email       TEXT PRIMARY KEY,
-                    position    TEXT,
+                    email TEXT PRIMARY KEY,
+                    position TEXT,
                     FOREIGN KEY (email) REFERENCES Users(email)
+                );
+            """)
+
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS Zipcode_Info (
+                    zipcode TEXT PRIMARY KEY,
+                    city TEXT,
+                    state TEXT
+                );
+            """)
+
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS Address (
+                    address_id TEXT PRIMARY KEY,
+                    zipcode TEXT,
+                    street_num TEXT,
+                    street_name TEXT,
+                    FOREIGN KEY (zipcode) REFERENCES Zipcode_Info(zipcode)
                 );
             """)
 
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS Bidders (
-                    email           TEXT PRIMARY KEY,
-                    first_name      TEXT,
-                    last_name       TEXT,
-                    age             INTEGER,
+                    email TEXT PRIMARY KEY,
+                    first_name TEXT,
+                    last_name TEXT,
+                    age INTEGER,
                     home_address_id TEXT,
-                    major           TEXT,
-                    FOREIGN KEY (email) REFERENCES Users(email)
+                    major TEXT,
+                    FOREIGN KEY (email) REFERENCES Users(email),
+                    FOREIGN KEY (home_address_id) REFERENCES Address(address_id)
                 );
             """)
 
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS Sellers (
-                    email                TEXT PRIMARY KEY,
-                    bank_routing_number  TEXT,
-                    bank_account_number  TEXT,
-                    balance              INTEGER,
+                    email TEXT PRIMARY KEY,
+                    bank_routing_number TEXT,
+                    bank_account_number TEXT,
+                    balance INTEGER,
                     FOREIGN KEY (email) REFERENCES Users(email)
+                );
+            """)
+
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS Local_Vendors (
+                    email TEXT PRIMARY KEY,
+                    business_name TEXT,
+                    business_address_id TEXT,
+                    customer_service_phone_number TEXT,
+                    FOREIGN KEY (email) REFERENCES Sellers(email),
+                    FOREIGN KEY (business_address_id) REFERENCES Address(address_id)
+                );
+            """)
+
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS Requests (
+                    request_id SERIAL PRIMARY KEY,
+                    sender_email TEXT,
+                    helpdesk_staff_email TEXT DEFAULT 'helpdeskteam@lsu.edu',
+                    request_type TEXT,
+                    request_desc TEXT,
+                    request_status INTEGER DEFAULT 0,
+                    FOREIGN KEY (sender_email) REFERENCES Users(email),
+                    FOREIGN KEY (helpdesk_staff_email) REFERENCES Helpdesk(email)
+                );
+            """)
+
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS Credit_Cards (
+                    credit_card_num  TEXT PRIMARY KEY,
+                    card_type TEXT,
+                    expire_month INTEGER,
+                    expire_year INTEGER,
+                    security_code TEXT,
+                    owner_email TEXT,
+                    FOREIGN KEY (owner_email) REFERENCES Bidders(email)
+                );
+            """)
+
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS Categories (
+                    parent_category TEXT,
+                    category_name TEXT,
+                    PRIMARY KEY (parent_category, category_name)
+                );
+            """)
+
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS Auction_Listings (
+                    seller_email TEXT,
+                    listing_id INTEGER,
+                    category TEXT,
+                    auction_title TEXT,
+                    product_name TEXT,
+                    product_description TEXT,
+                    quantity INTEGER DEFAULT 1,
+                    reserve_price INTEGER,
+                    max_bids INTEGER,
+                    status INTEGER DEFAULT 1,
+                    PRIMARY KEY (seller_email, listing_id),
+                    FOREIGN KEY (seller_email) REFERENCES Sellers(email)
+                );
+            """)
+
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS Bids (
+                    bid_id SERIAL PRIMARY KEY,
+                    seller_email TEXT,
+                    listing_id INTEGER,
+                    bidder_email TEXT,
+                    bid_price INTEGER,
+                    FOREIGN KEY (seller_email, listing_id) REFERENCES Auction_Listings(seller_email, listing_id),
+                    FOREIGN KEY (bidder_email) REFERENCES Bidders(email)
+                );
+            """)
+
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS Transactions (
+                    transaction_id SERIAL PRIMARY KEY,
+                    seller_email TEXT,
+                    listing_id INTEGER,
+                    buyer_email TEXT,
+                    date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    payment INTEGER,
+                    FOREIGN KEY (seller_email, listing_id) REFERENCES Auction_Listings(seller_email, listing_id),
+                    FOREIGN KEY (buyer_email) REFERENCES Bidders(email)
+                );
+            """)
+
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS Rating (
+                    bidder_email TEXT,
+                    seller_email TEXT,
+                    date DATE,
+                    rating INTEGER,
+                    rating_desc TEXT,
+                    PRIMARY KEY (bidder_email, seller_email, date),
+                    FOREIGN KEY (bidder_email) REFERENCES Bidders(email),
+                    FOREIGN KEY (seller_email) REFERENCES Sellers(email)
                 );
             """)
 
@@ -81,40 +199,53 @@ def init_db():
 
 
 # ─── CSV Data Population ─────────────────────────────────────
-def _load_csv_table(cur, data_dir, csv_file, table):
-    """Load a CSV into the given table. Assumes CSV headers (lowercased) match DB columns.
-    Skips rows whose email doesn't exist in Users."""
+def _load_csv(cur, data_dir, csv_file, table, skip_cols=None, rename_cols=None):
+    """
+    Load a CSV into a table if it's empty.
+    - skip_cols:   CSV column names (case-insensitive) to omit, e.g. SERIAL PKs
+    - rename_cols: map of csv col name → db col name, e.g. {"bidder_email": "buyer_email"}
+    """
     cur.execute(f"SELECT COUNT(*) AS count FROM {table}")
     if cur.fetchone()["count"] > 0:
         return
+
     filepath = os.path.join(data_dir, csv_file)
     if not os.path.exists(filepath):
+        print(f"{csv_file} not found, skipping.")
         return
+
+    skip_cols   = {c.lower() for c in (skip_cols or [])}
+    rename_cols = {k.lower(): v for k, v in (rename_cols or {}).items()}
+
     with open(filepath, newline="", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
-        columns = [col.lower() for col in reader.fieldnames]
-        col_names = ", ".join(columns)
-        placeholders = ", ".join(["%s"] * len(columns))
         for row in reader:
-            values = [row[col].strip() for col in reader.fieldnames]
+            cols, vals = [], []
+            for csv_col in reader.fieldnames:
+                normalized = csv_col.lower().strip()
+                if normalized in skip_cols:
+                    continue
+                cols.append(rename_cols.get(normalized, normalized))
+                raw = row[csv_col]
+                vals.append(raw.strip() if raw is not None else None)
+
+            col_names = ", ".join(cols)
+            placeholders = ", ".join(["%s"] * len(cols))
             cur.execute(
-                f"""
-                INSERT INTO {table} ({col_names})
-                SELECT {placeholders}
-                WHERE EXISTS (SELECT 1 FROM Users WHERE email = %s)
-                ON CONFLICT (email) DO NOTHING
-                """,
-                (*values, values[0]),
+                f"INSERT INTO {table} ({col_names}) VALUES ({placeholders}) ON CONFLICT DO NOTHING",
+                vals,
             )
+
+    print(f"Loaded {csv_file} → {table}")
 
 
 def populate_from_csv():
-    """Load CSV files from the NittanyAuctionDataset_v1/ directory into the database."""
+    """Load all CSV files in FK-dependency order."""
     with get_db() as conn:
         with conn.cursor() as cur:
             data_dir = "NittanyAuctionDataset_v1"
 
-            # Users is special: passwords must be hashed
+            # Users — passwords must be hashed before insert
             cur.execute("SELECT COUNT(*) AS count FROM Users")
             if cur.fetchone()["count"] == 0:
                 users_file = os.path.join(data_dir, "Users.csv")
@@ -122,20 +253,27 @@ def populate_from_csv():
                     with open(users_file, newline="", encoding="utf-8-sig") as f:
                         for row in csv.DictReader(f):
                             cur.execute(
-                                "INSERT INTO Users (email, password) VALUES (%s, %s) ON CONFLICT (email) DO NOTHING",
+                                "INSERT INTO Users (email, password) VALUES (%s, %s) ON CONFLICT DO NOTHING",
                                 (row["email"].strip(), hash_password(row["password"].strip())),
                             )
 
-            # All other tables follow the same pattern
-            for csv_file, table in [
-                ("Helpdesk.csv", "Helpdesk"),
-                ("Bidders.csv",  "Bidders"),
-                ("Sellers.csv",  "Sellers"),
-            ]:
-                _load_csv_table(cur, data_dir, csv_file, table)
+            # Load order respects FK dependencies
+            _load_csv(cur, data_dir, "Zipcode_Info.csv", "Zipcode_Info")
+            _load_csv(cur, data_dir, "Address.csv", "Address")
+            _load_csv(cur, data_dir, "Helpdesk.csv", "Helpdesk")
+            _load_csv(cur, data_dir, "Bidders.csv", "Bidders")
+            _load_csv(cur, data_dir, "Sellers.csv", "Sellers")
+            _load_csv(cur, data_dir, "Local_Vendors.csv", "Local_Vendors")
+            _load_csv(cur, data_dir, "Credit_Cards.csv", "Credit_Cards")
+            _load_csv(cur, data_dir, "Categories.csv", "Categories")
+            _load_csv(cur, data_dir, "Auction_Listings.csv", "Auction_Listings")
+            _load_csv(cur, data_dir, "Bids.csv", "Bids", skip_cols=["bid_id"])
+            _load_csv(cur, data_dir, "Transactions.csv", "Transactions", skip_cols=["transaction_id"], rename_cols={"bidder_email": "buyer_email"})
+            _load_csv(cur, data_dir, "Ratings.csv", "Rating")
+            _load_csv(cur, data_dir, "Requests.csv", "Requests", skip_cols=["request_id"])
 
         conn.commit()
-        print("✅ Database populated from CSV files.")
+        print("Database populated from CSV files.")
 
 
 # ─── Startup Event ────────────────────────────────────────────
