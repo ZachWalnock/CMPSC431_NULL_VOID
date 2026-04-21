@@ -1,5 +1,7 @@
 "use-client"
 
+import Link from "next/link";
+
 const fakeOrderDetails = {
     seller_email: "john.smith@example.com",
     listing_id: "LIST123456",
@@ -25,7 +27,9 @@ export default async function OrderDetails(
     return (
         <div style={{ background: "#fff", height: "100vh", fontWeight: 1000 }}>
             <div style={{ color: "#2E5BFF", fontSize: "3rem", padding: "2rem", paddingBottom: "0rem" }}>{ details.product_name + " Order Details"}</div>
-       
+            <Link href={"/orders"} style={{color: "#C9C9C9", padding: "2rem"}}>
+                Click to go back to orders
+            </Link>
             <div
                 style={{
                     margin: "2rem auto",
