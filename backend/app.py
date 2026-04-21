@@ -21,6 +21,19 @@ def hash_password(plain: str) -> str:
     """SHA-256 hash a plain-text password."""
     return hashlib.sha256(plain.encode("utf-8")).hexdigest()
 
+def get_orders_for_user(bidder_email):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+            SELECT A.Category, A.Auction_Title, A.Product_Name, A.Product_Description, A.Quantity, A.Reserve_Price, A.Max_bids, A.Status, B.Bidder_Email, B.Bid_Price
+            FROM Auction_Listings A, Bids B
+            WHERE A.Listing_ID = B.Listing_ID AND B.Bidder_Email = %s
+            """, (bidder_email,))
+            results = cur.fetchall()
+    return results
+       
+       
+
 
 # ─── Database Initialization ─────────────────────────────────
 def init_db():
