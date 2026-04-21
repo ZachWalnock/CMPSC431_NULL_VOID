@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import Navbar from "./components/navbar"
-import "./globals.css";
+import Navbar from "../components/navbar"
+import "./../globals.css";
 import { SidebarProvider, SidebarTrigger } from "@/app/components/ui/sidebar"
 import { AppSidebar } from "@/app/components/app-sidebar"
 
@@ -30,16 +30,17 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-
       <body className="min-h-full flex flex-col">
-        {/* <Navbar /> */}
-        <SidebarProvider>
-          <AppSidebar />
-          <main className="flex-1">
-            <SidebarTrigger />
-            {children}
-          </main>
-        </SidebarProvider>
+        <Navbar />
+        <div style={{ display: "flex" }}>
+          <SidebarProvider>
+            <AppSidebar />
+            <main className="flex-1">
+              <SidebarTrigger />
+              {children}
+            </main>
+          </SidebarProvider>
+        </div>
       </body>
     </html>
   );

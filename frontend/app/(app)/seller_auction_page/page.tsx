@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import AuctionListingCard from "../components/auctionListingCard";
+import AuctionListingCard from "../../components/auctionListingCard";
 
 const auction_listings = [
   {

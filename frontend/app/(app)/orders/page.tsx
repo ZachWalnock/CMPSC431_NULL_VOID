@@ -42,7 +42,7 @@ const bids = [
   }
 ];
 
-import OrderCard from "../components/orderCard"
+import OrderCard from "../../components/orderCard"
 export default function OrdersPage(
     //Navbar,
     // Orders
