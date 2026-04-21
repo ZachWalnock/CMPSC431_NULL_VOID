@@ -340,8 +340,15 @@ async def login(request: Request, email: str = Form(...), password: str = Form(.
     request.session["email"] = email
     request.session["role"] = role
 
-    return templates.TemplateResponse(request, "dashboard.html", {"request": request})
+    return RedirectResponse(url="http://localhost:3000/orders")
 
+@app.get("/get_user_orders")
+async def get_user_orders(request: Request):
+    bidder_email = request.query_params.get("bidder_email")
+    print(bidder_email)
+    results = get_orders_for_user(bidder_email)
+    print(results)
+    return None
 
 @app.get("/logout")
 async def logout(request: Request):
