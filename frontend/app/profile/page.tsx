@@ -391,16 +391,6 @@ function ProfileContent({ session }: { session: SessionData }) {
                     error={profileErrors.bank_account_number}
                   />
                   <Field
-                    label="Masked Routing"
-                    value={String(profile.profile.masked_routing_number ?? "Not provided")}
-                    readOnly
-                  />
-                  <Field
-                    label="Masked Account"
-                    value={String(profile.profile.masked_bank_account ?? "Not provided")}
-                    readOnly
-                  />
-                  <Field
                     label="Balance"
                     value={String(profile.profile.balance ?? 0)}
                     readOnly
