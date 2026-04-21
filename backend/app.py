@@ -149,7 +149,7 @@ def init_db():
                     product_name TEXT,
                     product_description TEXT,
                     quantity INTEGER DEFAULT 1,
-                    reserve_price TEXT,
+                    reserve_price INTEGER,
                     max_bids INTEGER,
                     status INTEGER DEFAULT 1,
                     PRIMARY KEY (seller_email, listing_id),
