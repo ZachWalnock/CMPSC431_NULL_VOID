@@ -149,7 +149,7 @@ def init_db():
                     product_name TEXT,
                     product_description TEXT,
                     quantity INTEGER DEFAULT 1,
-                    reserve_price INTEGER,
+                    reserve_price TEXT,
                     max_bids INTEGER,
                     status INTEGER DEFAULT 1,
                     PRIMARY KEY (seller_email, listing_id),
@@ -163,7 +163,7 @@ def init_db():
                     seller_email TEXT,
                     listing_id INTEGER,
                     bidder_email TEXT,
-                    bid_price INTEGER,
+                    bid_price TEXT,
                     FOREIGN KEY (seller_email, listing_id) REFERENCES Auction_Listings(seller_email, listing_id),
                     FOREIGN KEY (bidder_email) REFERENCES Bidders(email)
                 );
@@ -227,7 +227,8 @@ def _load_csv(cur, data_dir, csv_file, table, skip_cols=None, rename_cols=None):
                     continue
                 cols.append(rename_cols.get(normalized, normalized))
                 raw = row[csv_col]
-                vals.append(raw.strip() if raw is not None else None)
+                cleaned = raw.strip().lstrip("$").replace(",", "") if raw is not None else None
+                vals.append(cleaned if cleaned != "" else None)
 
             col_names = ", ".join(cols)
             placeholders = ", ".join(["%s"] * len(cols))
@@ -260,6 +261,11 @@ def populate_from_csv():
 
             _load_csv(cur, data_dir, "Zipcode_Info.csv", "Zipcode_Info")
             _load_csv(cur, data_dir, "Address.csv", "Address")
+            # helpdeskteam@lsu.edu is a pseudo staff in Helpdesk.csv but absent from Users.csv
+            cur.execute(
+                "INSERT INTO Users (email, password) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                ("helpdeskteam@lsu.edu", hash_password("helpdeskteam")),
+            )
             _load_csv(cur, data_dir, "Helpdesk.csv", "Helpdesk")
             _load_csv(cur, data_dir, "Bidders.csv", "Bidders")
             _load_csv(cur, data_dir, "Sellers.csv", "Sellers")
