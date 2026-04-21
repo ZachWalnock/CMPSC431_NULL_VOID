@@ -245,7 +245,7 @@ def populate_from_csv():
         with conn.cursor() as cur:
             data_dir = "NittanyAuctionDataset_v1"
 
-            # Users — passwords must be hashed before insert
+            # User passwords must be hashed before insert
             cur.execute("SELECT COUNT(*) AS count FROM Users")
             if cur.fetchone()["count"] == 0:
                 users_file = os.path.join(data_dir, "Users.csv")
@@ -257,7 +257,7 @@ def populate_from_csv():
                                 (row["email"].strip(), hash_password(row["password"].strip())),
                             )
 
-            # Load order respects FK dependencies
+
             _load_csv(cur, data_dir, "Zipcode_Info.csv", "Zipcode_Info")
             _load_csv(cur, data_dir, "Address.csv", "Address")
             _load_csv(cur, data_dir, "Helpdesk.csv", "Helpdesk")
@@ -315,9 +315,9 @@ DATABASE_URL = f"postgresql://{os.getenv('DATABASE_USER')}:{os.getenv('DATABASE_
 
 
 # ─── Routes ───────────────────────────────────────────────────
-@app.get("/", response_class=HTMLResponse)
-def login_page(request: Request):
-    return templates.TemplateResponse(request, "login.html", {"request": request})
+# @app.get("/", response_class=HTMLResponse)
+# def login_page(request: Request):
+#     return templates.TemplateResponse(request, "login.html", {"request": request})
 
 @app.post("/login", response_class=HTMLResponse)
 async def login(request: Request, email: str = Form(...), password: str = Form(...)):
