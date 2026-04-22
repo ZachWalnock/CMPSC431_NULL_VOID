@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Sidebar,
   SidebarContent,
@@ -16,32 +16,10 @@ import {
 } from "@/app/components/ui/sidebar";
 import Link from "next/link";
 
-const categories = [
-  {
-    label: "Electronics",
-    sub: ["Cameras", "Camera Lenses", "Laptops", "Audio", "Gaming"],
-  },
-  {
-    label: "Furniture",
-    sub: ["Office Chairs"],
-  },
-  {
-    label: "Appliances",
-    sub: ["Vacuums"],
-  },
-  {
-    label: "Books & Media",
-    sub: [],
-  },
-  {
-    label: "Clothing & Accessories",
-    sub: [],
-  },
-  {
-    label: "Sports & Outdoors",
-    sub: [],
-  },
-];
+type Category = {
+  parent: string;
+  children: string[];
+};
 
 const topNavItems = [
   { label: "Home", href: "/" },
@@ -50,10 +28,19 @@ const topNavItems = [
 ];
 
 export function AppSidebar() {
+  const [categories, setCategories] = useState<Category[]>([]);
   const [openCategory, setOpenCategory] = useState<string | null>(null);
 
-  function toggleCategory(label: string) {
-    setOpenCategory(openCategory === label ? null : label);
+  // Fetch categories from the backend on mount
+  useEffect(() => {
+    fetch("http://localhost:8000/api/categories")
+      .then((res) => res.json())
+      .then((data) => setCategories(data))
+      .catch((err) => console.error("Failed to load categories:", err));
+  }, []);
+
+  function toggleCategory(parent: string) {
+    setOpenCategory(openCategory === parent ? null : parent);
   }
 
   return (
@@ -79,27 +66,32 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {categories.map((cat) => (
-                <SidebarMenuItem key={cat.label}>
-                  <SidebarMenuButton onClick={() => cat.sub.length > 0 && toggleCategory(cat.label)} asChild={cat.sub.length === 0}>
-                    {cat.sub.length === 0 ? (
-                      <Link href={`/buyer_auction_page?category=${encodeURIComponent(cat.label)}`}>
-                        {cat.label}
+                <SidebarMenuItem key={cat.parent}>
+                  <SidebarMenuButton
+                    onClick={() => cat.children.length > 0 && toggleCategory(cat.parent)}
+                    asChild={cat.children.length === 0}
+                  >
+                    {cat.children.length === 0 ? (
+                      <Link href={`/buyer_auction_page?category=${encodeURIComponent(cat.parent)}`}>
+                        {cat.parent}
                       </Link>
                     ) : (
                       <span className="flex items-center justify-between w-full cursor-pointer">
-                        {cat.label}
-                        <span className="text-xs text-gray-400">{openCategory === cat.label ? "▾" : "▸"}</span>
+                        {cat.parent}
+                        <span className="text-xs text-gray-400">
+                          {openCategory === cat.parent ? "▾" : "▸"}
+                        </span>
                       </span>
                     )}
                   </SidebarMenuButton>
 
-                  {cat.sub.length > 0 && openCategory === cat.label && (
+                  {cat.children.length > 0 && openCategory === cat.parent && (
                     <SidebarMenuSub>
-                      {cat.sub.map((sub) => (
-                        <SidebarMenuSubItem key={sub}>
+                      {cat.children.map((child) => (
+                        <SidebarMenuSubItem key={child}>
                           <SidebarMenuSubButton asChild>
-                            <Link href={`/buyer_auction_page?category=${encodeURIComponent(cat.label)}&sub=${encodeURIComponent(sub)}`}>
-                              {sub}
+                            <Link href={`/buyer_auction_page?category=${encodeURIComponent(child)}`}>
+                              {child}
                             </Link>
                           </SidebarMenuSubButton>
                         </SidebarMenuSubItem>

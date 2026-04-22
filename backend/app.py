@@ -1,43 +1,72 @@
-from fastapi import FastAPI, Request, Form
-from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
-from starlette.middleware.sessions import SessionMiddleware
 from contextlib import asynccontextmanager
+import csv
+import hashlib
+import os
+
+from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 import psycopg
 from psycopg.rows import dict_row
-import hashlib
-import csv
-import os
-from dotenv import load_dotenv
+from starlette.middleware.sessions import SessionMiddleware
+
 load_dotenv()
+
+DATABASE_URL = f"postgresql://{os.getenv('DATABASE_USER')}:{os.getenv('DATABASE_PASSWORD')}@localhost:5432/NittanyAuction"
+
 
 # ─── Database Helpers ─────────────────────────────────────────
 def get_db():
-    """Return a PostgreSQL connection with dict-style row access."""
     return psycopg.connect(DATABASE_URL, row_factory=dict_row)
 
 
 def hash_password(plain: str) -> str:
-    """SHA-256 hash a plain-text password."""
     return hashlib.sha256(plain.encode("utf-8")).hexdigest()
+
+
+def get_user_role(email: str, conn) -> str:
+    with conn.cursor() as cur:
+        cur.execute("SELECT 1 FROM Helpdesk WHERE email = %s", (email,))
+        if cur.fetchone():
+            return "helpdesk"
+        cur.execute("SELECT 1 FROM Sellers WHERE email = %s", (email,))
+        if cur.fetchone():
+            return "seller"
+        cur.execute("SELECT 1 FROM Bidders WHERE email = %s", (email,))
+        if cur.fetchone():
+            return "buyer"
+    return "unknown"
+
 
 def get_orders_for_user(bidder_email):
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-            SELECT A.Category, A.Auction_Title, A.Product_Name, A.Product_Description, A.Quantity, A.Reserve_Price, A.Max_bids, A.Status, B.Bidder_Email, B.Bid_Price
-            FROM Auction_Listings A, Bids B
-            WHERE A.Listing_ID = B.Listing_ID AND B.Bidder_Email = %s
+                SELECT B.listing_id, A.category, A.auction_title, A.product_name,
+                       A.product_description, A.quantity, A.reserve_price,
+                       A.max_bids, A.status, B.bidder_email, B.bid_price
+                FROM Auction_Listings A
+                JOIN Bids B ON A.listing_id = B.listing_id
+                WHERE B.bidder_email = %s
             """, (bidder_email,))
-            results = cur.fetchall()
-    return results
-       
-       
+            return cur.fetchall()
+
+
+def get_order_details(listing_id: int):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT seller_email, category, auction_title, product_name,
+                       product_description, status, quantity, reserve_price
+                FROM Auction_Listings WHERE listing_id = %s
+            """, (listing_id,))
+            return cur.fetchone()
 
 
 # ─── Database Initialization ─────────────────────────────────
 def init_db():
-    """Create tables based on the provided relational schema."""
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute("""
@@ -46,7 +75,6 @@ def init_db():
                     password TEXT NOT NULL
                 );
             """)
-
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS Helpdesk (
                     email TEXT PRIMARY KEY,
@@ -54,7 +82,6 @@ def init_db():
                     FOREIGN KEY (email) REFERENCES Users(email)
                 );
             """)
-
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS Zipcode_Info (
                     zipcode TEXT PRIMARY KEY,
@@ -62,7 +89,6 @@ def init_db():
                     state TEXT
                 );
             """)
-
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS Address (
                     address_id TEXT PRIMARY KEY,
@@ -72,7 +98,6 @@ def init_db():
                     FOREIGN KEY (zipcode) REFERENCES Zipcode_Info(zipcode)
                 );
             """)
-
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS Bidders (
                     email TEXT PRIMARY KEY,
@@ -85,7 +110,6 @@ def init_db():
                     FOREIGN KEY (home_address_id) REFERENCES Address(address_id)
                 );
             """)
-
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS Sellers (
                     email TEXT PRIMARY KEY,
@@ -95,7 +119,6 @@ def init_db():
                     FOREIGN KEY (email) REFERENCES Users(email)
                 );
             """)
-
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS Local_Vendors (
                     email TEXT PRIMARY KEY,
@@ -106,7 +129,6 @@ def init_db():
                     FOREIGN KEY (business_address_id) REFERENCES Address(address_id)
                 );
             """)
-
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS Requests (
                     request_id SERIAL PRIMARY KEY,
@@ -119,10 +141,9 @@ def init_db():
                     FOREIGN KEY (helpdesk_staff_email) REFERENCES Helpdesk(email)
                 );
             """)
-
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS Credit_Cards (
-                    credit_card_num  TEXT PRIMARY KEY,
+                    credit_card_num TEXT PRIMARY KEY,
                     card_type TEXT,
                     expire_month INTEGER,
                     expire_year INTEGER,
@@ -131,7 +152,6 @@ def init_db():
                     FOREIGN KEY (owner_email) REFERENCES Bidders(email)
                 );
             """)
-
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS Categories (
                     parent_category TEXT,
@@ -139,7 +159,6 @@ def init_db():
                     PRIMARY KEY (parent_category, category_name)
                 );
             """)
-
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS Auction_Listings (
                     seller_email TEXT,
@@ -156,7 +175,6 @@ def init_db():
                     FOREIGN KEY (seller_email) REFERENCES Sellers(email)
                 );
             """)
-
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS Bids (
                     bid_id SERIAL PRIMARY KEY,
@@ -168,7 +186,6 @@ def init_db():
                     FOREIGN KEY (bidder_email) REFERENCES Bidders(email)
                 );
             """)
-
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS Transactions (
                     transaction_id SERIAL PRIMARY KEY,
@@ -181,7 +198,6 @@ def init_db():
                     FOREIGN KEY (buyer_email) REFERENCES Bidders(email)
                 );
             """)
-
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS Rating (
                     bidder_email TEXT,
@@ -194,29 +210,31 @@ def init_db():
                     FOREIGN KEY (seller_email) REFERENCES Sellers(email)
                 );
             """)
-
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS Listing_Removals (
+                    listing_id INTEGER,
+                    seller_email TEXT,
+                    removed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    remaining_bids INTEGER,
+                    reason TEXT,
+                    PRIMARY KEY (listing_id, seller_email),
+                    FOREIGN KEY (seller_email, listing_id) REFERENCES Auction_Listings(seller_email, listing_id)
+                );
+            """)
         conn.commit()
 
 
 # ─── CSV Data Population ─────────────────────────────────────
 def _load_csv(cur, data_dir, csv_file, table, skip_cols=None, rename_cols=None):
-    """
-    Load a CSV into a table if it's empty.
-    - skip_cols:   CSV column names (case-insensitive) to omit, e.g. SERIAL PKs
-    - rename_cols: map of csv col name → db col name, e.g. {"bidder_email": "buyer_email"}
-    """
     cur.execute(f"SELECT COUNT(*) AS count FROM {table}")
     if cur.fetchone()["count"] > 0:
         return
-
     filepath = os.path.join(data_dir, csv_file)
     if not os.path.exists(filepath):
         print(f"{csv_file} not found, skipping.")
         return
-
-    skip_cols   = {c.lower() for c in (skip_cols or [])}
+    skip_cols = {c.lower() for c in (skip_cols or [])}
     rename_cols = {k.lower(): v for k, v in (rename_cols or {}).items()}
-
     with open(filepath, newline="", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         for row in reader:
@@ -229,24 +247,19 @@ def _load_csv(cur, data_dir, csv_file, table, skip_cols=None, rename_cols=None):
                 raw = row[csv_col]
                 cleaned = raw.strip().lstrip("$").replace(",", "") if raw is not None else None
                 vals.append(cleaned if cleaned != "" else None)
-
             col_names = ", ".join(cols)
             placeholders = ", ".join(["%s"] * len(cols))
             cur.execute(
                 f"INSERT INTO {table} ({col_names}) VALUES ({placeholders}) ON CONFLICT DO NOTHING",
                 vals,
             )
-
     print(f"Loaded {csv_file} → {table}")
 
 
 def populate_from_csv():
-    """Load all CSV files in FK-dependency order."""
     with get_db() as conn:
         with conn.cursor() as cur:
             data_dir = "NittanyAuctionDataset_v1"
-
-            # User passwords must be hashed before insert
             cur.execute("SELECT COUNT(*) AS count FROM Users")
             if cur.fetchone()["count"] == 0:
                 users_file = os.path.join(data_dir, "Users.csv")
@@ -257,11 +270,8 @@ def populate_from_csv():
                                 "INSERT INTO Users (email, password) VALUES (%s, %s) ON CONFLICT DO NOTHING",
                                 (row["email"].strip(), hash_password(row["password"].strip())),
                             )
-
-
             _load_csv(cur, data_dir, "Zipcode_Info.csv", "Zipcode_Info")
             _load_csv(cur, data_dir, "Address.csv", "Address")
-            # helpdeskteam@lsu.edu is a pseudo staff in Helpdesk.csv but absent from Users.csv
             cur.execute(
                 "INSERT INTO Users (email, password) VALUES (%s, %s) ON CONFLICT DO NOTHING",
                 ("helpdeskteam@lsu.edu", hash_password("helpdeskteam")),
@@ -277,80 +287,617 @@ def populate_from_csv():
             _load_csv(cur, data_dir, "Transactions.csv", "Transactions", skip_cols=["transaction_id"], rename_cols={"bidder_email": "buyer_email"})
             _load_csv(cur, data_dir, "Ratings.csv", "Rating")
             _load_csv(cur, data_dir, "Requests.csv", "Requests", skip_cols=["request_id"])
-
         conn.commit()
         print("Database populated from CSV files.")
 
 
-# ─── Startup Event ────────────────────────────────────────────
+# ─── App Setup ────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup logic
     init_db()
     populate_from_csv()
-
     yield
 
-    # TODO: shutdown logic here
 
-
-# ─── Helper: Determine User Role ─────────────────────────────
-def get_user_role(email: str, conn) -> str:
-    """Return 'helpdesk', 'seller', or 'buyer' based on which tables the user exists in."""
-    with conn.cursor() as cur:
-        cur.execute("SELECT 1 FROM Helpdesk WHERE email = %s", (email,))
-        if cur.fetchone():
-            return "helpdesk"
-
-        cur.execute("SELECT 1 FROM Sellers WHERE email = %s", (email,))
-        if cur.fetchone():
-            return "seller"
-
-        cur.execute("SELECT 1 FROM Bidders WHERE email = %s", (email,))
-        if cur.fetchone():
-            return "buyer"
-
-    return "unknown"
-
-
-# ─── App Setup ────────────────────────────────────────────────
 app = FastAPI(lifespan=lifespan)
-templates = Jinja2Templates(directory="templates")
-app.add_middleware(SessionMiddleware, secret_key=os.getenv('MASTER_KEY'))
-DATABASE_URL = f"postgresql://{os.getenv('DATABASE_USER')}:{os.getenv('DATABASE_PASSWORD')}@localhost:5432/NittanyAuction"
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+app.add_middleware(SessionMiddleware, secret_key=os.getenv("MASTER_KEY", "dev-secret"))
 
 
-# ─── Routes ───────────────────────────────────────────────────
-# @app.get("/", response_class=HTMLResponse)
-# def login_page(request: Request):
-#     return templates.TemplateResponse(request, "login.html", {"request": request})
-
-@app.post("/login", response_class=HTMLResponse)
-async def login(request: Request, email: str = Form(...), password: str = Form(...)):
+# ─── Auth Routes ──────────────────────────────────────────────
+@app.post("/api/login")
+async def login(request: Request):
+    payload = await request.json()
+    email = payload.get("email", "")
+    password = payload.get("password", "")
     with get_db() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT * FROM Users WHERE email = %s", (email,))
+            cur.execute("SELECT email, password FROM Users WHERE email = %s", (email,))
             user = cur.fetchone()
-
-            if not user or user["password"] != hash_password(password):
-                return templates.TemplateResponse(request, "login.html", {"request": request, "error": "Invalid email or password."}, status_code=401)
-
-            role = get_user_role(email, conn)
-
+        if not user or user["password"] != hash_password(password):
+            return JSONResponse({"error": "Invalid email or password."}, status_code=401)
+        role = get_user_role(email, conn)
     request.session["email"] = email
     request.session["role"] = role
+    return {"email": email, "role": role}
 
-    return RedirectResponse(url="http://localhost:3000/orders")
+@app.post("/api/register")
+async def register(request: Request):
+    payload = await request.json()
+    email = payload.get("email", "")
+    password = payload.get("password", "")
+    first_name = payload.get("firstName", "")
+    last_name = payload.get("lastName", "")
+    zipcode = payload.get("zipcode", "")
+    street_num = payload.get("streetNum", "")
+    street_name = payload.get("streetName", "")
+    major = payload.get("major", "")
+    age = payload.get("age", "")
+    address_id = hash_password(zipcode + street_num + street_name)
+    if email == None or password == None or first_name == None or last_name == None or zipcode == None or major == None or age == None:
+        return JSONResponse({"error": "Invalid information."}, status_code=401)
+    password = hash_password(password)
+    with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("INSERT INTO Users (email, password) VALUES (%s, %s) ON CONFLICT (email) DO NOTHING", (email, password))
+                cur.execute("INSERT INTO Address (address_id,zipcode,street_num,street_name) VALUES (%s, %s, %s, %s) ON CONFLICT (address_id) DO NOTHING", (address_id, zipcode, street_num, street_name))
+                cur.execute("INSERT INTO Bidders (email, first_name, last_name, age, home_address_id, major) VALUES (%s, %s, %s, %s, %s, %s)", (email, first_name, last_name, age, address_id, major))
+    return {"success": True}
 
-@app.get("/get_user_orders")
-async def get_user_orders(request: Request):
-    bidder_email = request.query_params.get("bidder_email")
-    print(bidder_email)
-    results = get_orders_for_user(bidder_email)
-    print(results)
-    return None
+@app.get("/api/session")
+def api_session(request: Request):
+    email = request.session.get("email")
+    role = request.session.get("role")
+    if not email:
+        return JSONResponse({"authenticated": False}, status_code=401)
+    return {"authenticated": True, "email": email, "role": role}
 
-@app.get("/logout")
+
+@app.post("/api/logout")
 async def logout(request: Request):
     request.session.clear()
-    return RedirectResponse(url="/")
+    return {"success": True}
+
+
+# ─── Orders ───────────────────────────────────────────────────
+@app.get("/get_user_orders")
+async def get_user_orders(request: Request):
+    bidder_email = request.session.get("email")
+    return get_orders_for_user(bidder_email)
+
+
+@app.get("/get_order_details")
+async def order_details(request: Request):
+    bid_id = request.query_params.get("bid_id")
+    return get_order_details(int(bid_id))
+
+
+# ─── Auction Routes ───────────────────────────────────────────
+@app.get("/api/categories")
+async def get_categories():
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT parent_category, category_name FROM Categories ORDER BY parent_category, category_name")
+            rows = cur.fetchall()
+    grouped = {}
+    for row in rows:
+        parent = row["parent_category"]
+        child = row["category_name"]
+        if parent not in grouped:
+            grouped[parent] = []
+        grouped[parent].append(child)
+    return [{"parent": parent, "children": children} for parent, children in grouped.items()]
+
+
+@app.get("/api/listings")
+async def get_listings(
+    category: str = None,
+    q: str = None,
+    min_price: float = None,
+    max_price: float = None,
+):
+    conditions = ["status = 1"]
+    params = []
+    if category:
+        conditions.append("category = %s")
+        params.append(category)
+    if q:
+        conditions.append("""
+            (product_name ILIKE %s OR product_description ILIKE %s
+             OR auction_title ILIKE %s OR category ILIKE %s OR seller_email ILIKE %s)
+        """)
+        like = f"%{q}%"
+        params.extend([like, like, like, like, like])
+    if min_price is not None:
+        conditions.append("reserve_price >= %s")
+        params.append(min_price)
+    if max_price is not None:
+        conditions.append("reserve_price <= %s")
+        params.append(max_price)
+    where = " AND ".join(conditions)
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"SELECT * FROM Auction_Listings WHERE {where}", params)
+            rows = cur.fetchall()
+    return rows
+
+
+@app.get("/api/get_top_ten_items")
+async def get_top_ten_items():
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT a.*, COUNT(b.bid_id) AS bid_count
+                FROM Auction_Listings a
+                LEFT JOIN Bids b ON a.seller_email = b.seller_email AND a.listing_id = b.listing_id
+                WHERE a.status = 1
+                GROUP BY a.seller_email, a.listing_id
+                ORDER BY bid_count DESC
+                LIMIT 10
+            """)
+            rows = cur.fetchall()
+    return rows
+
+
+@app.get("/api/listing/{listing_id}")
+async def get_listing(listing_id: int):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT a.*,
+                       COUNT(b.bid_id) AS bid_count,
+                       MAX(b.bid_price::numeric) AS highest_bid
+                FROM Auction_Listings a
+                LEFT JOIN Bids b ON a.seller_email = b.seller_email AND a.listing_id = b.listing_id
+                WHERE a.listing_id = %s
+                GROUP BY a.seller_email, a.listing_id
+            """, (listing_id,))
+            listing = cur.fetchone()
+            if not listing:
+                raise HTTPException(status_code=404, detail="Listing not found")
+            cur.execute("""
+                SELECT bidder_email FROM Bids WHERE listing_id = %s ORDER BY bid_id DESC LIMIT 1
+            """, (listing_id,))
+            last_bid = cur.fetchone()
+            listing["last_bidder_email"] = last_bid["bidder_email"] if last_bid else None
+
+            # Auction result fields (when ended)
+            listing["winner_email"] = None
+            listing["successful"] = None
+            if listing["bid_count"] >= listing["max_bids"] or listing["status"] == 2:
+                cur.execute("""
+                    SELECT bidder_email, bid_price::numeric AS bid_price
+                    FROM Bids WHERE listing_id = %s
+                    ORDER BY bid_price::numeric DESC LIMIT 1
+                """, (listing_id,))
+                top = cur.fetchone()
+                if top:
+                    listing["winner_email"] = top["bidder_email"]
+                    listing["successful"] = float(top["bid_price"]) >= listing["reserve_price"]
+            # Seller average rating
+            cur.execute("""
+                SELECT ROUND(AVG(rating)::numeric, 1) AS avg_rating, COUNT(*) AS rating_count
+                FROM rating WHERE seller_email = %s
+            """, (listing["seller_email"],))
+            rating_row = cur.fetchone()
+            listing["seller_avg_rating"] = float(rating_row["avg_rating"]) if rating_row["avg_rating"] else None
+            listing["seller_rating_count"] = rating_row["rating_count"]
+    return listing
+
+
+class BidRequest(BaseModel):
+    bidder_email: str
+    bid_price: float
+
+
+@app.post("/api/listing/{listing_id}/bid")
+async def place_bid(listing_id: int, body: BidRequest):
+    auction_ended = False
+    successful = False
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT a.*, COUNT(b.bid_id) AS bid_count, MAX(b.bid_price::numeric) AS highest_bid
+                FROM Auction_Listings a
+                LEFT JOIN Bids b ON a.seller_email = b.seller_email AND a.listing_id = b.listing_id
+                WHERE a.listing_id = %s
+                GROUP BY a.seller_email, a.listing_id
+            """, (listing_id,))
+            listing = cur.fetchone()
+            if not listing:
+                raise HTTPException(status_code=404, detail="Listing not found")
+            if listing["status"] != 1 or listing["bid_count"] >= listing["max_bids"]:
+                return {"accepted": False, "reason": "auction ended"}
+            cur.execute("""
+                SELECT bidder_email FROM Bids WHERE listing_id = %s ORDER BY bid_id DESC LIMIT 1
+            """, (listing_id,))
+            last = cur.fetchone()
+            if last and last["bidder_email"] == body.bidder_email:
+                return {"accepted": False, "reason": "you must wait for another bidder"}
+            min_bid = listing["reserve_price"] if listing["highest_bid"] is None else listing["highest_bid"] + 1
+            if body.bid_price < min_bid:
+                return {"accepted": False, "reason": f"bid too low — minimum is ${min_bid}"}
+            cur.execute("""
+                INSERT INTO Bids (seller_email, listing_id, bidder_email, bid_price)
+                VALUES (%s, %s, %s, %s)
+            """, (listing["seller_email"], listing_id, body.bidder_email, str(body.bid_price)))
+            auction_ended = listing["bid_count"] + 1 >= listing["max_bids"]
+            if auction_ended:
+                successful = body.bid_price >= listing["reserve_price"]
+                new_status = 0  # closed; becomes 2 (sold) after payment
+                cur.execute("""
+                    UPDATE Auction_Listings SET status = %s
+                    WHERE seller_email = %s AND listing_id = %s
+                """, (new_status, listing["seller_email"], listing_id))
+        conn.commit()
+
+    if auction_ended:
+        return {
+            "accepted": True,
+            "reason": "bid placed successfully",
+            "auction_ended": True,
+            "successful": successful,
+            "winner_email": body.bidder_email if successful else None,
+        }
+    return {"accepted": True, "reason": "bid placed successfully", "auction_ended": False}
+
+
+# ─── Profile Routes ───────────────────────────────────────────
+@app.get("/api/profile")
+def get_profile(request: Request):
+    email = request.session.get("email")
+    if not email:
+        return JSONResponse({"error": "Not authenticated"}, status_code=401)
+    with get_db() as conn:
+        role = get_user_role(email, conn)
+        with conn.cursor() as cur:
+            if role == "buyer":
+                cur.execute("SELECT * FROM Bidders WHERE email = %s", (email,))
+            elif role == "seller":
+                cur.execute("SELECT * FROM Sellers WHERE email = %s", (email,))
+            elif role == "helpdesk":
+                cur.execute("SELECT * FROM Helpdesk WHERE email = %s", (email,))
+            else:
+                return JSONResponse({"error": "User not found"}, status_code=404)
+            profile = cur.fetchone()
+    return {"email": email, "role": role, "profile": profile or {}}
+
+
+@app.put("/api/profile")
+async def update_profile(request: Request):
+    email = request.session.get("email")
+    if not email:
+        return JSONResponse({"error": "Not authenticated"}, status_code=401)
+    payload = await request.json()
+    with get_db() as conn:
+        role = get_user_role(email, conn)
+        with conn.cursor() as cur:
+            if role == "buyer":
+                cur.execute("""
+                    UPDATE Bidders SET first_name=%s, last_name=%s, age=%s, major=%s
+                    WHERE email=%s
+                """, (
+                    payload.get("first_name"),
+                    payload.get("last_name"),
+                    payload.get("age") or None,
+                    payload.get("major"),
+                    email,
+                ))
+            elif role == "seller":
+                cur.execute("""
+                    UPDATE Sellers SET bank_routing_number=%s, bank_account_number=%s
+                    WHERE email=%s
+                """, (
+                    payload.get("bank_routing_number"),
+                    payload.get("bank_account_number"),
+                    email,
+                ))
+            elif role == "helpdesk":
+                cur.execute("""
+                    UPDATE Helpdesk SET position=%s WHERE email=%s
+                """, (payload.get("position"), email))
+        conn.commit()
+    return {"success": True}
+
+
+@app.post("/api/profile/password")
+async def change_password(request: Request):
+    email = request.session.get("email")
+    if not email:
+        return JSONResponse({"error": "Not authenticated"}, status_code=401)
+    payload = await request.json()
+    current = payload.get("current_password", "")
+    new_pw = payload.get("new_password", "")
+    if not current or not new_pw:
+        return JSONResponse({"error": "Both fields are required."}, status_code=400)
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT password FROM Users WHERE email = %s", (email,))
+            user = cur.fetchone()
+            if not user or user["password"] != hash_password(current):
+                return JSONResponse({"error": "Current password is incorrect."}, status_code=400)
+            cur.execute("UPDATE Users SET password=%s WHERE email=%s", (hash_password(new_pw), email))
+        conn.commit()
+    return {"success": True}
+
+
+# ─── Seller Dashboard Routes ──────────────────────────────────
+def require_seller(request: Request):
+    email = request.session.get("email")
+    role = request.session.get("role")
+    if not email or role != "seller":
+        return None, JSONResponse({"error": "Seller access required."}, status_code=403)
+    return email, None
+
+
+@app.get("/api/seller/listings")
+def seller_listings(request: Request):
+    email, err = require_seller(request)
+    if err:
+        return err
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT a.*, COUNT(b.bid_id) AS bid_count
+                FROM Auction_Listings a
+                LEFT JOIN Bids b ON a.seller_email = b.seller_email AND a.listing_id = b.listing_id
+                WHERE a.seller_email = %s
+                GROUP BY a.seller_email, a.listing_id
+                ORDER BY a.listing_id DESC
+            """, (email,))
+            rows = cur.fetchall()
+    return rows
+
+
+class ListingBody(BaseModel):
+    auction_title: str
+    product_name: str
+    product_description: str
+    category: str
+    reserve_price: int
+    max_bids: int
+    quantity: int = 1
+
+
+@app.post("/api/seller/listings")
+async def create_listing(request: Request, body: ListingBody):
+    email, err = require_seller(request)
+    if err:
+        return err
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COALESCE(MAX(listing_id), 0) + 1 AS next_id FROM Auction_Listings")
+            next_id = cur.fetchone()["next_id"]
+            cur.execute("""
+                INSERT INTO Auction_Listings
+                    (seller_email, listing_id, category, auction_title, product_name,
+                     product_description, quantity, reserve_price, max_bids, status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 1)
+            """, (email, next_id, body.category, body.auction_title, body.product_name,
+                  body.product_description, body.quantity, body.reserve_price, body.max_bids))
+        conn.commit()
+    return {"success": True, "listing_id": next_id}
+
+
+@app.put("/api/seller/listings/{listing_id}")
+async def update_listing(listing_id: int, request: Request, body: ListingBody):
+    email, err = require_seller(request)
+    if err:
+        return err
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT a.status, COUNT(b.bid_id) AS bid_count
+                FROM Auction_Listings a
+                LEFT JOIN Bids b ON a.seller_email = b.seller_email AND a.listing_id = b.listing_id
+                WHERE a.seller_email = %s AND a.listing_id = %s
+                GROUP BY a.status
+            """, (email, listing_id))
+            row = cur.fetchone()
+            if not row:
+                return JSONResponse({"error": "Listing not found."}, status_code=404)
+            if row["status"] == 2:
+                return JSONResponse({"error": "Cannot edit a sold listing."}, status_code=400)
+            if row["status"] == 1 and row["bid_count"] > 0:
+                return JSONResponse({"error": "Cannot edit an active listing that already has bids."}, status_code=400)
+            cur.execute("""
+                UPDATE Auction_Listings
+                SET auction_title=%s, product_name=%s, product_description=%s,
+                    category=%s, reserve_price=%s, max_bids=%s, quantity=%s
+                WHERE seller_email=%s AND listing_id=%s
+            """, (body.auction_title, body.product_name, body.product_description,
+                  body.category, body.reserve_price, body.max_bids, body.quantity,
+                  email, listing_id))
+        conn.commit()
+    return {"success": True}
+
+
+class RemoveBody(BaseModel):
+    reason: str
+
+
+@app.post("/api/seller/listings/{listing_id}/remove")
+async def remove_listing(listing_id: int, request: Request, body: RemoveBody):
+    email, err = require_seller(request)
+    if err:
+        return err
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT a.status, a.max_bids, COUNT(b.bid_id) AS bid_count
+                FROM Auction_Listings a
+                LEFT JOIN Bids b ON a.seller_email = b.seller_email AND a.listing_id = b.listing_id
+                WHERE a.seller_email = %s AND a.listing_id = %s
+                GROUP BY a.status, a.max_bids
+            """, (email, listing_id))
+            row = cur.fetchone()
+            if not row or row["status"] != 1:
+                return JSONResponse({"error": "Only active listings can be removed."}, status_code=400)
+            remaining = row["max_bids"] - row["bid_count"]
+            cur.execute(
+                "UPDATE Auction_Listings SET status = 0 WHERE seller_email = %s AND listing_id = %s",
+                (email, listing_id)
+            )
+            cur.execute("""
+                INSERT INTO Listing_Removals (listing_id, seller_email, remaining_bids, reason)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (listing_id, seller_email) DO UPDATE
+                    SET remaining_bids = EXCLUDED.remaining_bids,
+                        reason = EXCLUDED.reason,
+                        removed_at = CURRENT_TIMESTAMP
+            """, (listing_id, email, remaining, body.reason))
+        conn.commit()
+    return {"success": True}
+
+
+# ─── Payment Routes ───────────────────────────────────────────
+@app.get("/api/payment/{listing_id}")
+def get_payment_page(listing_id: int, request: Request):
+    email = request.session.get("email")
+    if not email:
+        return JSONResponse({"error": "Not authenticated"}, status_code=401)
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT a.*, MAX(b.bid_price::numeric) AS highest_bid
+                FROM Auction_Listings a
+                JOIN Bids b ON a.seller_email = b.seller_email AND a.listing_id = b.listing_id
+                WHERE a.listing_id = %s
+                GROUP BY a.seller_email, a.listing_id
+            """, (listing_id,))
+            listing = cur.fetchone()
+            if not listing:
+                return JSONResponse({"error": "Listing not found"}, status_code=404)
+            # Verify session user is the winner
+            cur.execute("""
+                SELECT bidder_email FROM Bids WHERE listing_id = %s
+                ORDER BY bid_price::numeric DESC LIMIT 1
+            """, (listing_id,))
+            top = cur.fetchone()
+            if not top or top["bidder_email"] != email:
+                return JSONResponse({"error": "You are not the winner of this auction."}, status_code=403)
+            if listing["status"] == 2:
+                return JSONResponse({"error": "This auction has already been paid."}, status_code=400)
+            # Fetch saved credit cards
+            cur.execute("""
+                SELECT card_token, card_type, expire_month, expire_year, last_four_digits
+                FROM Credit_Cards WHERE owner_email = %s
+            """, (email,))
+            cards = cur.fetchall()
+    return {"listing": listing, "winning_bid": float(listing["highest_bid"]), "saved_cards": cards}
+
+
+class PaymentBody(BaseModel):
+    card_token: str
+    card_type: str
+    expire_month: int
+    expire_year: int
+    security_code: str
+
+
+@app.post("/api/payment/{listing_id}")
+async def process_payment(listing_id: int, request: Request, body: PaymentBody):
+    email = request.session.get("email")
+    if not email:
+        return JSONResponse({"error": "Not authenticated"}, status_code=401)
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            # Confirm winner and get listing
+            cur.execute("""
+                SELECT a.*, MAX(b.bid_price::numeric) AS highest_bid
+                FROM Auction_Listings a
+                JOIN Bids b ON a.seller_email = b.seller_email AND a.listing_id = b.listing_id
+                WHERE a.listing_id = %s
+                GROUP BY a.seller_email, a.listing_id
+            """, (listing_id,))
+            listing = cur.fetchone()
+            if not listing or listing["status"] == 2:
+                return JSONResponse({"error": "Invalid or already paid."}, status_code=400)
+            cur.execute("""
+                SELECT bidder_email FROM Bids WHERE listing_id = %s
+                ORDER BY bid_price::numeric DESC LIMIT 1
+            """, (listing_id,))
+            top = cur.fetchone()
+            if not top or top["bidder_email"] != email:
+                return JSONResponse({"error": "You are not the winner."}, status_code=403)
+            # Save card if not already stored
+            last_four = body.card_token[-4:]
+            card_hash = hash_password(body.card_token)
+            cur.execute("""
+                INSERT INTO Credit_Cards (card_token, card_type, expire_month, expire_year, owner_email, last_four_digits, card_number_hash)
+                VALUES (%s, %s, %s, %s, %s, %s, %s) ON CONFLICT (card_token) DO NOTHING
+            """, (body.card_token, body.card_type, body.expire_month, body.expire_year,
+                  email, last_four, card_hash))
+            # Record transaction
+            cur.execute("""
+                INSERT INTO Transactions (seller_email, listing_id, buyer_email, payment)
+                VALUES (%s, %s, %s, %s)
+            """, (listing["seller_email"], listing_id, email, int(listing["highest_bid"])))
+            # Mark as sold
+            cur.execute("""
+                UPDATE Auction_Listings SET status = 2
+                WHERE seller_email = %s AND listing_id = %s
+            """, (listing["seller_email"], listing_id))
+        conn.commit()
+    return {"success": True}
+
+
+# ─── Rating Routes ────────────────────────────────────────────
+@app.get("/api/rating/{listing_id}")
+def get_rating_status(listing_id: int, request: Request):
+    email = request.session.get("email")
+    if not email:
+        return JSONResponse({"error": "Not authenticated"}, status_code=401)
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT rating, rating_desc FROM rating
+                WHERE bidder_email = %s AND listing_id = %s
+            """, (email, listing_id))
+            row = cur.fetchone()
+    if row:
+        return {"already_rated": True, "rating": row["rating"], "rating_desc": row["rating_desc"]}
+    return {"already_rated": False}
+
+
+class RatingBody(BaseModel):
+    rating: int
+    rating_desc: str = ""
+
+
+@app.post("/api/rating/{listing_id}")
+def submit_rating(listing_id: int, request: Request, body: RatingBody):
+    email = request.session.get("email")
+    if not email:
+        return JSONResponse({"error": "Not authenticated"}, status_code=401)
+    if body.rating < 1 or body.rating > 5:
+        return JSONResponse({"error": "Rating must be between 1 and 5."}, status_code=400)
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            # Verify a completed, paid transaction exists for this bidder + listing
+            cur.execute("""
+                SELECT t.seller_email FROM Transactions t
+                JOIN Auction_Listings a ON t.seller_email = a.seller_email AND t.listing_id = a.listing_id
+                WHERE t.listing_id = %s AND t.buyer_email = %s AND a.status = 2
+            """, (listing_id, email))
+            txn = cur.fetchone()
+            if not txn:
+                return JSONResponse({"error": "You can only rate sellers after completing payment."}, status_code=403)
+            # Check for duplicate
+            cur.execute("""
+                SELECT 1 FROM rating WHERE bidder_email = %s AND listing_id = %s
+            """, (email, listing_id))
+            if cur.fetchone():
+                return JSONResponse({"error": "You have already rated this seller for this auction."}, status_code=409)
+            cur.execute("""
+                INSERT INTO rating (bidder_email, seller_email, date, rating, rating_desc, listing_id)
+                VALUES (%s, %s, CURRENT_DATE, %s, %s, %s)
+            """, (email, txn["seller_email"], body.rating, body.rating_desc, listing_id))
+        conn.commit()
+    return {"success": True}
