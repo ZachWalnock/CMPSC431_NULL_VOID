@@ -1,32 +1,38 @@
-"use-client"
-
+"use client"
 import Link from "next/link";
+import React, { useEffect, useState, use } from "react";
+import { useSearchParams } from "next/navigation"
 
-const fakeOrderDetails = {
-    seller_email: "john.smith@example.com",
-    listing_id: "LIST123456",
-    bidder_email: "jane.doe@example.com",
-    date: "2024-06-25",
-    payment: "$350.00",
-    category: "Electronics",
-    auction_title: "Latest Gen Smartwatch Auction",
-    product_name: "Smartwatch Series 9",
-    product_description: "Brand new, latest series smartwatch with advanced health tracking features.",
-    quantity: 1,
-    reserve_price: "$300.00",
-    status: "Completed"
+type details = {
+    seller_email: string,
+    listing_id: number,
+    category: string,
+    auction_title: string,
+    product_name: string,
+    product_description: string,
+    quantity: number,
+    reserve_price: number,
+    status: number
 };
 
-export default async function OrderDetails(
-    { params }: { params: Promise<{ id: string }> }
-) {
-    const { id } = await params
-    
-    //await params
-    const details = fakeOrderDetails
+
+
+export default function OrderDetails({ params }: { params: Promise<{id: string }>}) {
+    const { id } = use(params)
+    const [orderDetails, setOrderDetails] = useState<details>();
+    useEffect(() => {
+        fetch(`http://localhost:8000/get_order_details?bid_id=${id}`, {
+            method: "GET",
+            credentials: "include",
+            headers: {
+                "Content-Type": "application/json"
+            }
+        }).then(data => data.json()).then(data => setOrderDetails(data))
+    }, [])
+    console.log(orderDetails)
     return (
         <div style={{ background: "#fff", height: "100vh", fontWeight: 1000 }}>
-            <div style={{ color: "#2E5BFF", fontSize: "3rem", padding: "2rem", paddingBottom: "0rem" }}>{ details.product_name + " Order Details"}</div>
+            <div style={{ color: "#2E5BFF", fontSize: "3rem", padding: "2rem", paddingBottom: "0rem" }}>{ orderDetails?.product_name + " Order Details"}</div>
             <Link href={"/orders"} style={{color: "#C9C9C9", padding: "2rem"}}>
                 Click to go back to orders
             </Link>
@@ -52,39 +58,39 @@ export default async function OrderDetails(
                 <div style={{width: "90%" }}>
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
                         <div style={{ marginBottom: "0.7rem" }}>
-                            <strong>Order ID:</strong> {details.listing_id}
+                            <strong>Order ID:</strong> {id}
                         </div>
                         <div style={{ marginBottom: "0.7rem" }}>
-                            <strong>Product:</strong> {details.product_name}
+                            <strong>Product:</strong> {orderDetails?.product_name}
                         </div>
                         <div style={{ marginBottom: "0.7rem" }}>
-                            <strong>Auction Title:</strong> {details.auction_title}
+                            <strong>Auction Title:</strong> {orderDetails?.auction_title}
                         </div>
                         
                     </div>
 
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
                         <div style={{marginBottom: "0.7rem"}}>
-                            <strong>Category:</strong> {details.category}
+                            <strong>Category:</strong> {orderDetails?.category}
                         </div>
                         <div style={{marginBottom: "0.7rem"}}>
-                            <strong>Seller:</strong> {details.seller_email}
+                            <strong>Seller:</strong> {orderDetails?.seller_email}
                         </div>
                         <div style={{marginBottom: "0.7rem"}}>
-                            <strong>Buyer:</strong> {details.bidder_email}
+                            <strong>Quantity:</strong> {orderDetails?.quantity}
                         </div>
 
                     </div>
 
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
                         <div style={{marginBottom: "0.7rem"}}>
-                            <strong>Date:</strong> {details.date}
+                            <strong>Date:</strong> empty
                         </div>
                         <div style={{marginBottom: "0.7rem"}}>
-                            <strong>Payment:</strong> {details.payment}
+                            <strong>Reserve Price:</strong> {orderDetails?.reserve_price}
                         </div>
                         <div style={{marginBottom: "0.7rem"}}>
-                            <strong>Status:</strong> {details.status}
+                            <strong>Status:</strong> {orderDetails?.status}
                         </div>    
 
                     </div>

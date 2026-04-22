@@ -11,6 +11,7 @@ import hashlib
 import csv
 import os
 from dotenv import load_dotenv
+from fastapi.middleware.cors import CORSMiddleware
 load_dotenv()
 
 # ─── Database Helpers ─────────────────────────────────────────
@@ -27,11 +28,22 @@ def get_orders_for_user(bidder_email):
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-            SELECT A.Category, A.Auction_Title, A.Product_Name, A.Product_Description, A.Quantity, A.Reserve_Price, A.Max_bids, A.Status, B.Bidder_Email, B.Bid_Price
+            SELECT B.Listing_ID, A.Category, A.Auction_Title, A.Product_Name, A.Product_Description, A.Quantity, A.Reserve_Price, A.Max_bids, A.Status, B.Bidder_Email, B.Bid_Price
             FROM Auction_Listings A, Bids B
             WHERE A.Listing_ID = B.Listing_ID AND B.Bidder_Email = %s
             """, (bidder_email,))
             results = cur.fetchall()
+    return results
+
+def get_order_detials(Bid_ID: int):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"""
+            SELECT A.Seller_Email, A.Category, A.Auction_Title, A.Product_Name, A.Product_Description, A.Status, A.Quantity, A.Reserve_Price
+            FROM Auction_Listings A
+            WHERE A.Listing_ID = %s
+            """, (Bid_ID,))
+            results = cur.fetchone()
     return results
        
 # ─── Database Initialization ─────────────────────────────────
@@ -290,8 +302,6 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # TODO: shutdown logic here
-
 
 # ─── Helper: Determine User Role ─────────────────────────────
 def get_user_role(email: str, conn) -> str:
@@ -314,6 +324,13 @@ def get_user_role(email: str, conn) -> str:
 
 # ─── App Setup ────────────────────────────────────────────────
 app = FastAPI(lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"], 
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 templates = Jinja2Templates(directory="templates")
 app.add_middleware(SessionMiddleware, secret_key=os.getenv('MASTER_KEY'))
 app.add_middleware(
@@ -349,11 +366,18 @@ async def login(request: Request, email: str = Form(...), password: str = Form(.
 
 @app.get("/get_user_orders")
 async def get_user_orders(request: Request):
-    bidder_email = request.query_params.get("bidder_email")
-    print(bidder_email)
+    print("Getting here!")
+    bidder_email = request.session.get("email")
     results = get_orders_for_user(bidder_email)
     print(results)
-    return None
+    return results
+
+@app.get("/get_order_details")
+async def order_details(request: Request):
+    bid_id = request.query_params.get("bid_id")
+    results = get_order_detials(bid_id)
+    print(results)
+    return results
 
 @app.get("/api/categories")
 async def get_categories():
