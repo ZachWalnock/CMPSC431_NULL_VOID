@@ -47,8 +47,8 @@ export default function AuctionPage() {
   function applyPriceFilter(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const params = new URLSearchParams();
-    if (category) params.set("category",  category);
-    if (q) params.set("q",         q);
+    if (category) params.set("category", category);
+    if (q) params.set("q", q);
     if (minInput) params.set("min_price", minInput);
     if (maxInput) params.set("max_price", maxInput);
     router.push(`/buyer_auction_page?${params.toString()}`);
@@ -70,36 +70,26 @@ export default function AuctionPage() {
       <div style={{ padding: "2rem 2rem 0.5rem" }}>
         <div style={{ color: "#2E5BFF", fontSize: "2rem", fontWeight: 700 }}>{pageTitle}</div>
 
-        {/* Price range filter */}
         <form onSubmit={applyPriceFilter} style={{ display: "flex", alignItems: "center", gap: "0.6rem", marginTop: "1rem", flexWrap: "wrap" }}>
           <span style={{ fontSize: "0.85rem", color: "#6b7280", fontWeight: 500 }}>Price range:</span>
           <input
-            type="number"
-            placeholder="Min $"
-            value={minInput}
-            onChange={(e) => setMinInput(e.target.value)}
-            min={0}
+            type="number" placeholder="Min $" value={minInput}
+            onChange={(e) => setMinInput(e.target.value)} min={0}
             style={{ width: "100px", padding: "0.4rem 0.7rem", border: "1px solid #d1d5db", borderRadius: "8px", fontSize: "0.85rem", color: "#111827" }}
           />
           <span style={{ color: "#9ca3af" }}>—</span>
           <input
-            type="number"
-            placeholder="Max $"
-            value={maxInput}
-            onChange={(e) => setMaxInput(e.target.value)}
-            min={0}
+            type="number" placeholder="Max $" value={maxInput}
+            onChange={(e) => setMaxInput(e.target.value)} min={0}
             style={{ width: "100px", padding: "0.4rem 0.7rem", border: "1px solid #d1d5db", borderRadius: "8px", fontSize: "0.85rem", color: "#111827" }}
           />
-          <button
-            type="submit"
+          <button type="submit"
             style={{ padding: "0.4rem 1rem", background: "#2E5BFF", color: "#fff", border: "none", borderRadius: "8px", fontSize: "0.85rem", fontWeight: 600, cursor: "pointer" }}
           >
             Apply
           </button>
           {(minPrice || maxPrice) && (
-            <button
-              type="button"
-              onClick={clearPriceFilter}
+            <button type="button" onClick={clearPriceFilter}
               style={{ padding: "0.4rem 0.8rem", background: "none", color: "#6b7280", border: "1px solid #d1d5db", borderRadius: "8px", fontSize: "0.85rem", cursor: "pointer" }}
             >
               Clear

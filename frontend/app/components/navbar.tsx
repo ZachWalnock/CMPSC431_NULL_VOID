@@ -78,19 +78,21 @@ export default function Navbar() {
           My Dashboard
         </button>
         <button
-          aria-label="Profile"
-          style={{
-            background: "#E8F0FE",
-            borderRadius: "50%",
-            width: 40,
-            height: 40,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            border: "none",
-            cursor: "pointer",
+          onClick={() => router.push("/profile")}
+          style={{ color: "#2E5BFF", fontWeight: 500, fontSize: "1rem", padding: "0.5rem 1.25rem", background: "none", border: "none", cursor: "pointer" }}
+        >
+          Profile
+        </button>
+        <button
+          onClick={() => {
+            document.cookie = "nittany_user=; path=/; max-age=0";
+            fetch("http://localhost:8000/api/logout", { method: "POST", credentials: "include" });
+            router.push("/login");
           }}
-        />
+          style={{ color: "#e53e3e", fontWeight: 500, fontSize: "1rem", padding: "0.5rem 1.25rem", background: "none", border: "none", cursor: "pointer" }}
+        >
+          Logout
+        </button>
       </div>
 
       <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: "1px", background: "#e5e7eb" }} />
