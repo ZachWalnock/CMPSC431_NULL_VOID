@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 type AuctionListingProps = {
   listing_id: number;
   seller_email: string;
@@ -9,6 +11,7 @@ type AuctionListingProps = {
   reserve_price: number;
   max_bids: number;
   status: number;
+  detailsHref?: string;
   footer?: React.ReactNode;
 };
 
@@ -23,6 +26,7 @@ export default function AuctionListingCard({
   reserve_price,
   max_bids,
   status,
+  detailsHref,
   footer,
 }: AuctionListingProps) {
   const statusLabel = status === 1 ? "Active" : "Closed";
@@ -49,8 +53,20 @@ export default function AuctionListingCard({
           <div style={{ fontSize: "0.75rem", color: "#6b7280", marginBottom: "6px" }}>
             Listing #{listing_id}
           </div>
-          <div style={{ fontWeight: 700, fontSize: "1rem", color: "#111827" }}>{product_name}</div>
-          <div style={{ fontSize: "0.9rem", color: "#374151", marginTop: "4px" }}>{auction_title}</div>
+          {detailsHref ? (
+            <Link
+              href={detailsHref}
+              style={{ textDecoration: "none", color: "inherit", display: "inline-block" }}
+            >
+              <div style={{ fontWeight: 700, fontSize: "1rem", color: "#111827" }}>{product_name}</div>
+              <div style={{ fontSize: "0.9rem", color: "#374151", marginTop: "4px" }}>{auction_title}</div>
+            </Link>
+          ) : (
+            <>
+              <div style={{ fontWeight: 700, fontSize: "1rem", color: "#111827" }}>{product_name}</div>
+              <div style={{ fontSize: "0.9rem", color: "#374151", marginTop: "4px" }}>{auction_title}</div>
+            </>
+          )}
           <div style={{ fontSize: "0.75rem", color: "#6b7280", marginTop: "2px" }}>{category}</div>
         </div>
         <span
@@ -85,7 +101,26 @@ export default function AuctionListingCard({
         </div>
       </div>
 
-      {footer ? <div style={{ marginTop: "0.75rem" }}>{footer}</div> : null}
+      {(detailsHref || footer) ? (
+        <div style={{ marginTop: "0.75rem", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
+          {detailsHref ? (
+            <Link
+              href={detailsHref}
+              style={{
+                color: "#2E5BFF",
+                fontWeight: 600,
+                textDecoration: "none",
+                fontSize: "0.9rem",
+              }}
+            >
+              View Details
+            </Link>
+          ) : (
+            <span />
+          )}
+          {footer ? <div style={{ flex: "1 1 320px" }}>{footer}</div> : null}
+        </div>
+      ) : null}
     </div>
   );
 }

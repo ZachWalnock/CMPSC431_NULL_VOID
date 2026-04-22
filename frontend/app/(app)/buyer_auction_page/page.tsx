@@ -234,8 +234,9 @@ export default function AuctionPage() {
               reserve_price={listing.reserve_price}
               max_bids={listing.max_bids}
               status={listing.status}
+              detailsHref={`/buyer_auction_page/${listing.listing_id}`}
               footer={
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
+                <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
                   <div style={{ color: "#6b7280", fontSize: "0.9rem" }}>
                     {listing.in_cart ? "Already saved in your cart." : "Save this listing to revisit it later."}
                   </div>
