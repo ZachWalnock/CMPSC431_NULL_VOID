@@ -136,42 +136,24 @@ function ProfileContent({ session }: { session: SessionData }) {
       });
   }, []);
 
-  async function lookupZip(value: string, prefix = "") {
+  function lookupZip(value: string, prefix = "") {
     if (!value) {
-      setForm((current) => ({
-        ...current,
-        [`${prefix}city`]: "",
-        [`${prefix}state`]: "",
-      }));
+      setForm((current) => ({ ...current, [`${prefix}city`]: "", [`${prefix}state`]: "" }));
       return;
     }
-
-    try {
-      const result = await apiFetch<{ city: string; state: string }>(
-        `/api/zipcode/${encodeURIComponent(value)}`,
-      );
-      setForm((current) => ({
-        ...current,
-        [`${prefix}city`]: result.city,
-        [`${prefix}state`]: result.state,
-      }));
-    } catch {
-      setForm((current) => ({
-        ...current,
-        [`${prefix}city`]: "",
-        [`${prefix}state`]: "",
-      }));
-    }
+    apiFetch<{ city: string; state: string }>(`/api/zipcode/${encodeURIComponent(value)}`)
+      .then((result) => {
+        setForm((current) => ({ ...current, [`${prefix}city`]: result.city, [`${prefix}state`]: result.state }));
+      })
+      .catch(() => {
+        setForm((current) => ({ ...current, [`${prefix}city`]: "", [`${prefix}state`]: "" }));
+      });
   }
 
   function updateField(name: string, value: string) {
     setForm((current) => ({ ...current, [name]: value }));
-    if (name === "zipcode") {
-      void lookupZip(value);
-    }
-    if (name === "vendor_zipcode") {
-      void lookupZip(value, "vendor_");
-    }
+    if (name === "zipcode") lookupZip(value);
+    if (name === "vendor_zipcode") lookupZip(value, "vendor_");
   }
 
   function resetProfileForm() {
@@ -180,29 +162,25 @@ function ProfileContent({ session }: { session: SessionData }) {
     setProfileMessage(null);
   }
 
-  async function submitProfile(event: React.FormEvent<HTMLFormElement>) {
+  function submitProfile(event: React.SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
     setProfileErrors({});
     setProfileMessage(null);
-
-    try {
-      const result = await apiFetch<{ success: boolean; profile: ProfileResponse }>(
-        "/api/profile",
-        {
-          method: "PUT",
-          body: JSON.stringify(form),
-        },
-      );
-      const nextForm = buildFormState(result.profile);
-      setProfile(result.profile);
-      setForm(nextForm);
-      setSavedForm(nextForm);
-      setProfileMessage("Profile updated successfully.");
-    } catch (err) {
-      const apiError = err as ApiError;
-      setProfileErrors(apiError.errors ?? {});
-      setProfileMessage(apiError.error ?? null);
-    }
+    apiFetch<{ success: boolean; profile: ProfileResponse }>("/api/profile", {
+      method: "PUT",
+      body: JSON.stringify(form),
+    })
+      .then((result) => {
+        const nextForm = buildFormState(result.profile);
+        setProfile(result.profile);
+        setForm(nextForm);
+        setSavedForm(nextForm);
+        setProfileMessage("Profile updated successfully.");
+      })
+      .catch((err: ApiError) => {
+        setProfileErrors(err.errors ?? {});
+        setProfileMessage(err.error ?? null);
+      });
   }
 
   function resetPasswordForm() {
@@ -215,23 +193,22 @@ function ProfileContent({ session }: { session: SessionData }) {
     setPasswordMessage(null);
   }
 
-  async function submitPassword(event: React.FormEvent<HTMLFormElement>) {
+  function submitPassword(event: React.SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
     setPasswordErrors({});
     setPasswordMessage(null);
-
-    try {
-      await apiFetch<{ success: boolean }>("/api/profile/change-password", {
-        method: "POST",
-        body: JSON.stringify(passwordForm),
+    apiFetch<{ success: boolean }>("/api/profile/change-password", {
+      method: "POST",
+      body: JSON.stringify(passwordForm),
+    })
+      .then(() => {
+        resetPasswordForm();
+        setPasswordMessage("Password updated successfully.");
+      })
+      .catch((err: ApiError) => {
+        setPasswordErrors(err.errors ?? {});
+        setPasswordMessage(err.error ?? null);
       });
-      resetPasswordForm();
-      setPasswordMessage("Password updated successfully.");
-    } catch (err) {
-      const apiError = err as ApiError;
-      setPasswordErrors(apiError.errors ?? {});
-      setPasswordMessage(apiError.error ?? null);
-    }
   }
 
   if (!profile) {
