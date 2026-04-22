@@ -327,6 +327,28 @@ async def login(request: Request):
     request.session["role"] = role
     return {"email": email, "role": role}
 
+@app.post("/api/register")
+async def register(request: Request):
+    payload = await request.json()
+    email = payload.get("email", "")
+    password = payload.get("password", "")
+    first_name = payload.get("firstName", "")
+    last_name = payload.get("lastName", "")
+    zipcode = payload.get("zipcode", "")
+    street_num = payload.get("streetNum", "")
+    street_name = payload.get("streetName", "")
+    major = payload.get("major", "")
+    age = payload.get("age", "")
+    address_id = hash_password(zipcode + street_num + street_name)
+    if email == None or password == None or first_name == None or last_name == None or zipcode == None or major == None or age == None:
+        return JSONResponse({"error": "Invalid information."}, status_code=401)
+    password = hash_password(password)
+    with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("INSERT INTO Users (email, password) VALUES (%s, %s) ON CONFLICT (email) DO NOTHING", (email, password))
+                cur.execute("INSERT INTO Address (address_id,zipcode,street_num,street_name) VALUES (%s, %s, %s, %s) ON CONFLICT (address_id) DO NOTHING", (address_id, zipcode, street_num, street_name))
+                cur.execute("INSERT INTO Bidders (email, first_name, last_name, age, home_address_id, major) VALUES (%s, %s, %s, %s, %s, %s)", (email, first_name, last_name, age, address_id, major))
+    return {"success": True}
 
 @app.get("/api/session")
 def api_session(request: Request):
