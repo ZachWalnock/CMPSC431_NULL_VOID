@@ -72,6 +72,12 @@ export default function Navbar() {
           Browse Auctions
         </button>
         <button
+          onClick={() => router.push("/cart")}
+          style={{ color: "#2E5BFF", fontWeight: 500, fontSize: "1rem", padding: "0.5rem 1.25rem", background: "none", border: "none", cursor: "pointer" }}
+        >
+          Your Cart
+        </button>
+        <button
           onClick={() => router.push("/seller_auction_page")}
           style={{ color: "#2E5BFF", fontWeight: 500, fontSize: "1rem", padding: "0.5rem 1.25rem", background: "none", border: "none", cursor: "pointer" }}
         >

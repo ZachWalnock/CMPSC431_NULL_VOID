@@ -65,6 +65,14 @@ def get_order_details(listing_id: int):
             return cur.fetchone()
 
 
+def require_buyer(request: Request):
+    email = request.session.get("email")
+    role = request.session.get("role")
+    if not email or role != "buyer":
+        return None, JSONResponse({"error": "Buyer access required."}, status_code=403)
+    return email, None
+
+
 # ─── Database Initialization ─────────────────────────────────
 def init_db():
     with get_db() as conn:
@@ -196,6 +204,17 @@ def init_db():
                     payment INTEGER,
                     FOREIGN KEY (seller_email, listing_id) REFERENCES Auction_Listings(seller_email, listing_id),
                     FOREIGN KEY (buyer_email) REFERENCES Bidders(email)
+                );
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS Cart_Items (
+                    bidder_email TEXT,
+                    seller_email TEXT,
+                    listing_id INTEGER,
+                    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (bidder_email, seller_email, listing_id),
+                    FOREIGN KEY (bidder_email) REFERENCES Bidders(email),
+                    FOREIGN KEY (seller_email, listing_id) REFERENCES Auction_Listings(seller_email, listing_id)
                 );
             """)
             cur.execute("""
@@ -397,35 +416,112 @@ async def get_categories():
 
 @app.get("/api/listings")
 async def get_listings(
+    request: Request,
     category: str = None,
     q: str = None,
     min_price: float = None,
     max_price: float = None,
 ):
-    conditions = ["status = 1"]
-    params = []
+    buyer_email = request.session.get("email") if request.session.get("role") == "buyer" else None
+    conditions = ["a.status = 1"]
+    params = [buyer_email]
     if category:
-        conditions.append("category = %s")
+        conditions.append("a.category = %s")
         params.append(category)
     if q:
         conditions.append("""
-            (product_name ILIKE %s OR product_description ILIKE %s
-             OR auction_title ILIKE %s OR category ILIKE %s OR seller_email ILIKE %s)
+            (a.product_name ILIKE %s OR a.product_description ILIKE %s
+             OR a.auction_title ILIKE %s OR a.category ILIKE %s OR a.seller_email ILIKE %s)
         """)
         like = f"%{q}%"
         params.extend([like, like, like, like, like])
     if min_price is not None:
-        conditions.append("reserve_price >= %s")
+        conditions.append("a.reserve_price >= %s")
         params.append(min_price)
     if max_price is not None:
-        conditions.append("reserve_price <= %s")
+        conditions.append("a.reserve_price <= %s")
         params.append(max_price)
     where = " AND ".join(conditions)
+    query = f"""
+        SELECT a.*,
+               CASE WHEN c.listing_id IS NULL THEN FALSE ELSE TRUE END AS in_cart
+        FROM Auction_Listings a
+        LEFT JOIN Cart_Items c
+          ON c.bidder_email = %s
+         AND c.seller_email = a.seller_email
+         AND c.listing_id = a.listing_id
+        WHERE {where}
+        ORDER BY a.listing_id DESC
+    """
     with get_db() as conn:
         with conn.cursor() as cur:
-            cur.execute(f"SELECT * FROM Auction_Listings WHERE {where}", params)
+            cur.execute(query, params)
             rows = cur.fetchall()
     return rows
+
+
+class CartBody(BaseModel):
+    listing_id: int
+    seller_email: str
+
+
+@app.get("/api/cart")
+async def get_cart(request: Request):
+    buyer_email, err = require_buyer(request)
+    if err:
+        return err
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT a.*, c.added_at
+                FROM Cart_Items c
+                JOIN Auction_Listings a
+                  ON a.seller_email = c.seller_email
+                 AND a.listing_id = c.listing_id
+                WHERE c.bidder_email = %s
+                ORDER BY c.added_at DESC, a.listing_id DESC
+            """, (buyer_email,))
+            rows = cur.fetchall()
+    return rows
+
+
+@app.post("/api/cart")
+async def add_to_cart(request: Request, body: CartBody):
+    buyer_email, err = require_buyer(request)
+    if err:
+        return err
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT 1
+                FROM Auction_Listings
+                WHERE seller_email = %s AND listing_id = %s AND status = 1
+            """, (body.seller_email, body.listing_id))
+            listing = cur.fetchone()
+            if not listing:
+                return JSONResponse({"error": "Listing not found."}, status_code=404)
+            cur.execute("""
+                INSERT INTO Cart_Items (bidder_email, seller_email, listing_id)
+                VALUES (%s, %s, %s)
+                ON CONFLICT DO NOTHING
+            """, (buyer_email, body.seller_email, body.listing_id))
+        conn.commit()
+    return {"success": True}
+
+
+@app.delete("/api/cart")
+async def remove_from_cart(request: Request, body: CartBody):
+    buyer_email, err = require_buyer(request)
+    if err:
+        return err
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                DELETE FROM Cart_Items
+                WHERE bidder_email = %s AND seller_email = %s AND listing_id = %s
+            """, (buyer_email, body.seller_email, body.listing_id))
+        conn.commit()
+    return {"success": True}
 
 
 @app.get("/api/get_top_ten_items")

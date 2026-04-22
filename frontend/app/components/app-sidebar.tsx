@@ -23,6 +23,7 @@ type Category = {
 
 const topNavItems = [
   { label: "Home", href: "/" },
+  { label: "Your Cart", href: "/cart" },
   { label: "Seller Dashboard", href: "/seller_auction_page" },
   { label: "Orders", href: "/orders" },
 ];
