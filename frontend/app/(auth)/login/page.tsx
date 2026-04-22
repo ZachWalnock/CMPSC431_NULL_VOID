@@ -1,8 +1,7 @@
-"use-client"
-import Link from "next/link"
-export default function Login() {
-    const apiBaseUrl = "http://127.0.0.1:8000";
+"use client";
 
+import Link from "next/link";
+export default function Login() {
     return (
         <div style={{backgroundColor: "#FFFFFF"}}>
             <div
@@ -58,7 +57,7 @@ export default function Login() {
                 >
                 <form
                     method="post"
-                    action={`${apiBaseUrl}/login`}
+                    action="/backend/login"
                     style={{ width: "80%", display: "flex", flexDirection: "column", justifyContent: "space-around"}}
                 >
                     <div style={{marginBottom: "4px", display: "flex", flexDirection: "column"}}>
