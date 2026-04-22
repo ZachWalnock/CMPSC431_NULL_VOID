@@ -1,6 +1,8 @@
+"use client"
 import Link from "next/link";
+import { useEffect, useState } from "react"
 type OrderCardProps = {
-    orderID: string;
+    listing_id: number;
     auction_title: string;
     product_name: string;
     product_description: string;
@@ -9,7 +11,7 @@ type OrderCardProps = {
   };
 
 export default function OrderCard({
-    orderID,
+    listing_id,
     auction_title,
     product_name,
     product_description,
@@ -44,7 +46,7 @@ export default function OrderCard({
         <div style={{ color: "#9EA7C7", whiteSpace: "nowrap", flex: 1 }}>
             <b>Auction:</b> {auction_title}
         </div>
-        <Link href={`/orderdetails/${orderID}`}>
+        <Link href={`/orderdetails/${listing_id}`}>
             <button
                 style={{
                     background: "#2E5BFF",

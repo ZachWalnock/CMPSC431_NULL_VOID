@@ -1,7 +1,7 @@
 "use-client"
 import Link from "next/link"
 export default function Login() {
-    const apiBaseUrl = "http://127.0.0.1:8000";
+    const apiBaseUrl = "http://localhost:8000";
 
     return (
         <div style={{backgroundColor: "#FFFFFF"}}>
