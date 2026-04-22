@@ -26,6 +26,10 @@ type SessionResponse = {
   role: string;
 };
 
+function canUseCart(role: string) {
+  return role === "buyer" || role === "seller";
+}
+
 export default function AuctionPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -215,7 +219,7 @@ export default function AuctionPage() {
         )}
         {listings.map((listing) => {
           const itemKey = `${listing.seller_email}:${listing.listing_id}`;
-          const disabled = role !== "buyer" || listing.in_cart || pendingKey === itemKey;
+          const disabled = !canUseCart(role) || listing.in_cart || pendingKey === itemKey;
 
           return (
             <AuctionListingCard

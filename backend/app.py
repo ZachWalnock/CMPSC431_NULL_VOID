@@ -65,11 +65,11 @@ def get_order_details(listing_id: int):
             return cur.fetchone()
 
 
-def require_buyer(request: Request):
+def require_cart_user(request: Request):
     email = request.session.get("email")
     role = request.session.get("role")
-    if not email or role != "buyer":
-        return None, JSONResponse({"error": "Buyer access required."}, status_code=403)
+    if not email or role not in {"buyer", "seller"}:
+        return None, JSONResponse({"error": "Buyer or seller access required."}, status_code=403)
     return email, None
 
 
@@ -213,9 +213,15 @@ def init_db():
                     listing_id INTEGER,
                     added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY (bidder_email, seller_email, listing_id),
-                    FOREIGN KEY (bidder_email) REFERENCES Bidders(email),
+                    FOREIGN KEY (bidder_email) REFERENCES Users(email),
                     FOREIGN KEY (seller_email, listing_id) REFERENCES Auction_Listings(seller_email, listing_id)
                 );
+            """)
+            cur.execute("ALTER TABLE Cart_Items DROP CONSTRAINT IF EXISTS cart_items_bidder_email_fkey;")
+            cur.execute("""
+                ALTER TABLE Cart_Items
+                ADD CONSTRAINT cart_items_bidder_email_fkey
+                FOREIGN KEY (bidder_email) REFERENCES Users(email)
             """)
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS Rating (
@@ -422,9 +428,9 @@ async def get_listings(
     min_price: float = None,
     max_price: float = None,
 ):
-    buyer_email = request.session.get("email") if request.session.get("role") == "buyer" else None
+    cart_email = request.session.get("email") if request.session.get("role") in {"buyer", "seller"} else None
     conditions = ["a.status = 1"]
-    params = [buyer_email]
+    params = [cart_email]
     if category:
         conditions.append("a.category = %s")
         params.append(category)
@@ -467,7 +473,7 @@ class CartBody(BaseModel):
 
 @app.get("/api/cart")
 async def get_cart(request: Request):
-    buyer_email, err = require_buyer(request)
+    cart_email, err = require_cart_user(request)
     if err:
         return err
     with get_db() as conn:
@@ -480,14 +486,14 @@ async def get_cart(request: Request):
                  AND a.listing_id = c.listing_id
                 WHERE c.bidder_email = %s
                 ORDER BY c.added_at DESC, a.listing_id DESC
-            """, (buyer_email,))
+            """, (cart_email,))
             rows = cur.fetchall()
     return rows
 
 
 @app.post("/api/cart")
 async def add_to_cart(request: Request, body: CartBody):
-    buyer_email, err = require_buyer(request)
+    cart_email, err = require_cart_user(request)
     if err:
         return err
     with get_db() as conn:
@@ -504,14 +510,14 @@ async def add_to_cart(request: Request, body: CartBody):
                 INSERT INTO Cart_Items (bidder_email, seller_email, listing_id)
                 VALUES (%s, %s, %s)
                 ON CONFLICT DO NOTHING
-            """, (buyer_email, body.seller_email, body.listing_id))
+            """, (cart_email, body.seller_email, body.listing_id))
         conn.commit()
     return {"success": True}
 
 
 @app.delete("/api/cart")
 async def remove_from_cart(request: Request, body: CartBody):
-    buyer_email, err = require_buyer(request)
+    cart_email, err = require_cart_user(request)
     if err:
         return err
     with get_db() as conn:
@@ -519,7 +525,7 @@ async def remove_from_cart(request: Request, body: CartBody):
             cur.execute("""
                 DELETE FROM Cart_Items
                 WHERE bidder_email = %s AND seller_email = %s AND listing_id = %s
-            """, (buyer_email, body.seller_email, body.listing_id))
+            """, (cart_email, body.seller_email, body.listing_id))
         conn.commit()
     return {"success": True}
 

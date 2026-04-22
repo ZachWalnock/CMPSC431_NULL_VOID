@@ -29,6 +29,10 @@ function formatAddedAt(value: string | null | undefined) {
   return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
 }
 
+function canUseCart(role: string) {
+  return role === "buyer" || role === "seller";
+}
+
 export default function CartPage() {
   const [role, setRole] = useState("");
   const [items, setItems] = useState<CartItem[]>([]);
@@ -127,9 +131,9 @@ export default function CartPage() {
           </Link>
         </div>
 
-        {role && role !== "buyer" && (
+        {role && !canUseCart(role) && (
           <div style={{ marginTop: "1rem", background: "#fef3c7", color: "#92400e", padding: "0.85rem 1rem", borderRadius: "10px" }}>
-            Only buyer accounts can use the cart.
+            Only buyer and seller accounts can use the cart.
           </div>
         )}
         {message && (
