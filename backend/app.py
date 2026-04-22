@@ -6,7 +6,7 @@ import hmac
 import os
 import re
 import secrets
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Form, HTTPException, Request
@@ -31,6 +31,21 @@ SESSION_HTTPS_ONLY = (
     os.getenv("SESSION_HTTPS_ONLY", "true" if IS_PRODUCTION else "false").lower()
     == "true"
 )
+
+
+def build_frontend_url(request: Request, path: str) -> str:
+    """Prefer the current browser origin so session cookies stay on the same host."""
+    origin = request.headers.get("origin")
+    if origin:
+        return f"{origin.rstrip('/')}{path}"
+
+    referer = request.headers.get("referer")
+    if referer:
+        parsed = urlsplit(referer)
+        if parsed.scheme and parsed.netloc:
+            return f"{parsed.scheme}://{parsed.netloc}{path}"
+
+    return f"{FRONTEND_ORIGIN}{path}"
 
 
 def get_db():
@@ -1000,8 +1015,8 @@ app.add_middleware(
 
 
 @app.get("/")
-def login_page():
-    return RedirectResponse(url=f"{FRONTEND_ORIGIN}/", status_code=303)
+def login_page(request: Request):
+    return RedirectResponse(url=build_frontend_url(request, "/"), status_code=303)
 
 
 @app.post("/login")
@@ -1012,14 +1027,18 @@ async def login(request: Request, email: str = Form(...), password: str = Form(.
             user = cur.fetchone()
             if not user or not verify_password(password, user["password"]):
                 return RedirectResponse(
-                    url=f"{FRONTEND_ORIGIN}/?error={quote('Invalid email or password.')}",
+                    url=build_frontend_url(
+                        request, f"/?error={quote('Invalid email or password.')}"
+                    ),
                     status_code=303,
                 )
             role = get_user_role(email, conn)
 
     request.session["email"] = email
     request.session["role"] = role
-    return RedirectResponse(url=f"{FRONTEND_ORIGIN}/dashboard", status_code=303)
+    return RedirectResponse(
+        url=build_frontend_url(request, "/dashboard"), status_code=303
+    )
 
 
 @app.post("/api/login")
@@ -1369,7 +1388,7 @@ def api_resolve_ticket(request_id: int, request: Request):
 @app.get("/logout")
 async def logout(request: Request):
     request.session.clear()
-    return RedirectResponse(url=f"{FRONTEND_ORIGIN}/", status_code=303)
+    return RedirectResponse(url=build_frontend_url(request, "/"), status_code=303)
 
 
 @app.post("/api/logout")

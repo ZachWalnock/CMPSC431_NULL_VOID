@@ -11,6 +11,8 @@ export type SessionData = {
   role: string;
 };
 
+type SessionError = ApiError & Partial<SessionData>;
+
 type SessionPageProps = {
   children: (session: SessionData) => React.ReactNode;
 };
@@ -29,9 +31,9 @@ export function SessionPage({ children }: SessionPageProps) {
           setSession(data);
         }
       })
-      .catch((err: ApiError) => {
+      .catch((err: SessionError) => {
         if (!active) return;
-        if (err?.error || err?.errors) {
+        if (err?.error || err?.errors || err?.authenticated === false) {
           router.replace("/");
           return;
         }
